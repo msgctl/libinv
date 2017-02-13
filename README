@@ -1,0 +1,8 @@
+Install deps as needed. Update the list if you feel like it:
+
+LIST
+====
+
+Building:
+make submodules
+make
