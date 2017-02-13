@@ -45,7 +45,7 @@ CXXFLAGS := -std=c++14 -g -fPIC
 SOFLAGS  := -shared
 
 .PHONY: all depend clean mrproper googletest submodules test \
-    clean_testresults directories submodule_init rapidjson docs deps
+            clean_testresults directories rapidjson docs deps
 
 all: directories depend $(TARGETS) test
 
@@ -80,19 +80,16 @@ mrproper: clean
 	+cd googletest && make clean
 	+cd googletest/googletest && make clean
 
-submodule_init:
-	git submodule init
-
 rapidjson:
-	git submodule update rapidjson
+	git submodule update --init rapidjson
 	+cd rapidjson && cmake . && make
 
 googletest:
-	git submodule update googletest
+	git submodule update --init googletest
 	+cd googletest && cmake . && make
 	+cd googletest/googletest && cmake . && make
 
-submodules: submodule_init googletest rapidjson
+submodules: googletest rapidjson
 
 directories:
 	mkdir -p build/unittest
