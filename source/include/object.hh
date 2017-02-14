@@ -56,8 +56,9 @@ class Object : public IndexType<Database, Derived>,
                public Mixins<Database, Derived>...,
                public NullMixin<Database, Derived>,
                public DatamodelObject<Database>,
-               protected RPC::MethodRoster<Database, Derived> {
+               private RPC::MethodRoster<Database, Derived> {
     typedef Object<Database, IndexType, Derived, Mixins...> self;
+    friend class RPC::MethodRoster<Database, Derived>;
 
     template<
         template<class, class> class T_ = NullMixin,
@@ -88,7 +89,7 @@ class Object : public IndexType<Database, Derived>,
             try {
                 return object.RPC::MethodRoster<Database, T_<Database,
                                  Derived>>::rpc_call(db, call, alloc);
-            } catch(RPC::exceptions::NoSuchMethod &e) {}
+            } catch (RPC::exceptions::NoSuchMethod &e) {}
 
             if (sizeof...(Mixins_)) {
                 return Foreach<Mixins_...>::rpc_call(object, db, call, alloc);
@@ -162,7 +163,7 @@ public:
 
     static std::vector<std::string> rpc_methods() {
         std::vector<std::string> ret;
-        for (const RPC::Method<Database, self> &m : methods())
+        for (const RPC::Method<Database, Derived> &m : methods())
             ret.push_back(m.name());
         Foreach<Mixins...>::rpc_method_list(ret);
         return ret;
@@ -196,16 +197,10 @@ public:
             }
         }
 
-        std::string method = call.jsonrpc()->namespaces().path();
-        if (method == "repr.get") {
-            get(db);
-            return repr(alloc);
-        }
-        if (method == "repr.create") {
-            from_repr(RPC::ObjectCallParams(call)["repr"]);
-            commit(db);
-            return rapidjson::Value("OK");
-        }
+        try {
+            return RPC::MethodRoster<Database, Derived>::rpc_call(db,
+                                                        call, alloc);
+        } catch (RPC::exceptions::NoSuchMethod &e) {}
 
         return Foreach<Mixins...>::rpc_call(*this, db, call, alloc);
     }
@@ -215,10 +210,12 @@ public:
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         from_repr(jrepr);
         commit(db);
+        return rapidjson::Value("OK");
     }
 
     rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
                                 rapidjson::Document::AllocatorType &alloc) {
+        get(db);
         return repr(alloc);
     }
 
@@ -271,10 +268,10 @@ public:
         return Derived::type();
     }
 
-    static const std::vector<RPC::Method<Database, self>> &methods() {
-        static const std::vector<RPC::Method<Database, self>> ret({
-            RPC::Method<Database, self>("repr.get", &self::rpc_repr_get),
-            RPC::Method<Database, self>("repr.create", &self::rpc_repr_create),
+    static const std::vector<RPC::Method<Database, Derived>> &methods() {
+        static const std::vector<RPC::Method<Database, Derived>> ret({
+            RPC::Method<Database, Derived>("repr.get", &self::rpc_repr_get),
+            RPC::Method<Database, Derived>("repr.create", &self::rpc_repr_create),
         });
         return ret;
     }
@@ -296,7 +293,7 @@ private:
                                                                   alloc);
         robj.AddMember("type", type, alloc);
 
-        Foreach<Mixins...>::repr(*this, robj, alloc);       
+        Foreach<Mixins...>::repr(*this, robj, alloc);
     }
 };
 
