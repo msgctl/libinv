@@ -112,8 +112,8 @@ public:
         return Attribute<self>(key, *this);
     }
 
-    rapidjson::Value rpc_attribute_list(Database &db, RPC::SingleCall &call,
-                                rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_attribute_list(Database &db, const RPC::SingleCall &call,
+                                      rapidjson::Document::AllocatorType &alloc) {
         // never generate responses to notifications
         if (call.jsonrpc()->is_notification())
             return rapidjson::Value(rapidjson::kNullType);
@@ -122,8 +122,8 @@ public:
         return repr(alloc);
     }
 
-    rapidjson::Value rpc_attribute_set(Database &db, RPC::SingleCall &call,
-                               rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_attribute_set(Database &db, const RPC::SingleCall &call,
+                                     rapidjson::Document::AllocatorType &alloc) {
         const char *attrn = RPC::ObjectCallParams(call)["key"].GetString();
         const char *attrv = RPC::ObjectCallParams(call)["value"].GetString();
         (*this)[attrn] = attrv;
@@ -135,8 +135,8 @@ public:
         return rapidjson::Value("OK");
     }
 
-    rapidjson::Value rpc_attribute_get(Database &db, RPC::SingleCall &call,
-                               rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_attribute_get(Database &db, const RPC::SingleCall &call,
+                                     rapidjson::Document::AllocatorType &alloc) {
         // never generate responses to notifications
         if (call.jsonrpc()->is_notification())
             return rapidjson::Value(rapidjson::kNullType);
@@ -164,8 +164,8 @@ public:
         return type;
     }
 
-    rapidjson::Value rpc_repr_get(Database &db, RPC::SingleCall &call,
-                      rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
+                                rapidjson::Document::AllocatorType &alloc) {
         return repr(alloc);
     }
 

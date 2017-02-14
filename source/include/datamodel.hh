@@ -41,8 +41,8 @@ public:
     virtual void get(Database &db) {};
     virtual void commit(Database &db) {};
 
-    virtual rapidjson::Value rpc_call(
-                   Database &db, RPC::SingleCall &call,
+    virtual rapidjson::Value rpc_call(Database &db,
+                        const RPC::SingleCall &call,
           rapidjson::Document::AllocatorType &alloc) {}
 
     virtual std::vector<std::string> virtual_rpc_methods() const {};

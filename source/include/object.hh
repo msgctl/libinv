@@ -83,7 +83,7 @@ class Object : public IndexType<Database, Derived>,
         }
 
         static rapidjson::Value rpc_call(self &object, Database &db,
-                                              RPC::SingleCall &call,
+                                        const RPC::SingleCall &call,
                         rapidjson::Document::AllocatorType &alloc) {
             try {
                 return object.RPC::MethodRoster<Database, T_<Database,
@@ -180,8 +180,8 @@ public:
         return rpc_methods();
     }
 
-    rapidjson::Value rpc_call(Database &db, RPC::SingleCall &call,
-                      rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_call(Database &db, const RPC::SingleCall &call,
+                            rapidjson::Document::AllocatorType &alloc) {
         // set the index id if specified in the request or else a new id will
         // be generated automatically
         if (!RPC::ObjectCallParams(call).id().empty()) {
@@ -210,15 +210,15 @@ public:
         return Foreach<Mixins...>::rpc_call(*this, db, call, alloc);
     }
 
-    rapidjson::Value rpc_repr_create(Database &db, RPC::SingleCall &call,
-                             rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_repr_create(Database &db, const RPC::SingleCall &call,
+                                   rapidjson::Document::AllocatorType &alloc) {
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         from_repr(jrepr);
         commit(db);
     }
 
-    rapidjson::Value rpc_repr_get(Database &db, RPC::SingleCall &call,
-                          rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
+                                rapidjson::Document::AllocatorType &alloc) {
         return repr(alloc);
     }
 

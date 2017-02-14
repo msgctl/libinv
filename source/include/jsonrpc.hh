@@ -150,6 +150,14 @@ public:
         return m_jreq;
     }
 
+    rapidjson::Document::AllocatorType &allocator() const {
+        if (m_alloc == nullptr) {
+            throw InvalidUse("tried to modify a Request instance without "
+                                                    "assigned allocator");
+        }
+        return *m_alloc;
+    }
+
     operator std::string() const {
         rapidjson::StringBuffer esb;
         rapidjson::PrettyWriter<rapidjson::StringBuffer> ewriter(esb);
@@ -157,13 +165,7 @@ public:
         return esb.GetString();
     }
 
-    void clear() {
-        m_jreq->SetNull();
-    }
-
 protected:
-    RequestBase() {}
-
     static void validate(const rapidjson::Value &request);
     static void validate_single(const rapidjson::Value &request);
 
@@ -171,7 +173,16 @@ protected:
     static bool is_notification(const rapidjson::Value &request);
     static bool is_single(const rapidjson::Value &request);
 
+    RequestBase() {}
+
+    void alloc_document(enum rapidjson::Type type = rapidjson::kNullType) {
+        m_jreq.reset(new rapidjson::Document(type));
+        m_jval = m_jreq.get();
+        m_alloc = &m_jreq->GetAllocator();
+    }
+
     rapidjson::Value *m_jval;
+    rapidjson::Document::AllocatorType *m_alloc;
     std::unique_ptr<rapidjson::Document> m_jreq;
 };
 
@@ -181,9 +192,7 @@ public:
     bool is_single() const;
 
     Request() {
-        m_jreq.reset(new rapidjson::Document);
-        m_jval = m_jreq.get();
-        clear();
+        alloc_document();
     }
 
     void parse(const std::string &reqstr) {
@@ -198,13 +207,14 @@ public:
 class SingleRequest : public RequestBase {
 public:
     SingleRequest() {
-        m_jreq.reset(new rapidjson::Document);
-        m_jval = m_jreq.get();
-        clear();
+        alloc_document(rapidjson::kObjectType);
     }
 
-    SingleRequest(rapidjson::Value *value) {
+    // See: BatchRequest::foreach()
+    SingleRequest(rapidjson::Value *value, rapidjson::Document::AllocatorType
+                                                          *alloc = nullptr) {
         m_jval = value;
+        m_alloc = alloc;
         validate(*m_jval); // throws;
         if (is_batch(*m_jval)) {
             throw InvalidUse("tried to make a SingleRequest() instance out of "
@@ -215,6 +225,7 @@ public:
     SingleRequest(Request &&req) {
         m_jreq = std::move(req.document());
         m_jval = m_jreq.get();
+        m_alloc = &m_jreq->GetAllocator();
 
         if (is_batch(*m_jval)) {
             throw InvalidUse("tried to make a SingleRequest() instance out of "
@@ -236,8 +247,20 @@ public:
         return (*m_jval)["id"];
     }
 
+    void erase_id() {
+        m_jval->EraseMember("id");
+    }
+
+    void id(const std::string &sid) {
+        update_member("id", sid.c_str());
+    }
+
     std::string method() const {
         return (*m_jval)["method"].GetString();
+    }
+
+    void method(const std::string &sid) {
+        update_member("method", sid.c_str());
     }
 
     const Namespace &namespaces() const {
@@ -246,20 +269,34 @@ public:
         return *m_namespace;
     }
 
+    void clear() {
+        m_jreq->SetObject();
+    }
+
 private:
+    void update_member(const char *key, const char *svalue) {
+        rapidjson::Value::MemberIterator jid =
+                     m_jval->FindMember("id");
+        if (jid == m_jval->MemberEnd()) {
+            m_jval->AddMember(rapidjson::StringRef(key),
+             rapidjson::StringRef(svalue), allocator());
+        }
+        jid->value.SetString(svalue, allocator());
+    }
+
     mutable std::unique_ptr<Namespace> m_namespace;
 };
 
 class BatchRequest : public RequestBase {
 public:
     BatchRequest() {
-        m_jreq.reset(new rapidjson::Document);
-        m_jval = m_jreq.get();
-        clear();
+        alloc_document(rapidjson::kArrayType);
     }
 
-    BatchRequest(rapidjson::Value *value) {
+    BatchRequest(rapidjson::Value *value, rapidjson::Document::AllocatorType
+                                                         *alloc = nullptr) {
         m_jval = value;
+        m_alloc = nullptr;
         validate(*m_jval);
         if (is_single(*m_jval)) {
             throw InvalidUse("tried to make a BatchRequest() instance out of "
@@ -270,6 +307,7 @@ public:
     BatchRequest(Request &&req) {
         m_jreq = std::move(req.document());
         m_jval = m_jreq.get();
+        m_alloc = &m_jreq->GetAllocator();
 
         if (is_single(*m_jval)) {
             throw InvalidUse("tried to make a BatchRequest() instance out of "
@@ -278,12 +316,25 @@ public:
     }
 
     template<class Callback>
+    void foreach(Callback cb) const {
+        for (rapidjson::Value::ValueIterator itr = m_jreq->Begin();
+                                     itr != m_jreq->End(); ++itr) {
+            const SingleRequest sreq(&*itr);
+            cb(sreq);
+        }
+    }
+
+    template<class Callback>
     void foreach(Callback cb) {
         for (rapidjson::Value::ValueIterator itr = m_jreq->Begin();
                                      itr != m_jreq->End(); ++itr) {
-            SingleRequest sreq(&*itr);
+            SingleRequest sreq(&*itr, m_alloc);
             cb(sreq);
         }
+    }
+
+    void clear() {
+        m_jreq->SetArray();
     }
 };
 
