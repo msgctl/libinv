@@ -163,7 +163,8 @@ public:
 
     static std::vector<std::string> rpc_methods() {
         std::vector<std::string> ret;
-        for (const RPC::Method<Database, Derived> &m : methods())
+        // Derived classes can redefine methods()
+        for (const RPC::Method<Database, Derived> &m : Derived::methods())
             ret.push_back(m.name());
         Foreach<Mixins...>::rpc_method_list(ret);
         return ret;
@@ -198,8 +199,10 @@ public:
         }
 
         try {
-            return RPC::MethodRoster<Database, Derived>::rpc_call(db,
-                                                        call, alloc);
+            // for RPC implementation in Derived classes
+            Derived &derived = static_cast<Derived &>(*this); 
+            return derived.RPC::MethodRoster<Database, Derived>::rpc_call(db,
+                                                                call, alloc);
         } catch (RPC::exceptions::NoSuchMethod &e) {}
 
         return Foreach<Mixins...>::rpc_call(*this, db, call, alloc);
