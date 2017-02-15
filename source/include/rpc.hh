@@ -54,7 +54,7 @@ namespace exceptions {
 
 class Session {
 public:
-    virtual void reply(std::unique_ptr<JSONRPC::Response> response) = 0;
+    virtual void reply(std::unique_ptr<JSONRPC::ResponseBase> response) = 0;
 };
 
 class CallBase {
@@ -75,34 +75,59 @@ class BatchCall : public CallBase {
     friend class SingleCall;
 
 public:
+    BatchCall(JSONRPC::BatchRequest *request, Session *session)
+    : CallBase(session) {
+        m_req.ptr = request;
+    }
+
     BatchCall(const JSONRPC::BatchRequest *request, Session *session)
-    : m_req(request), CallBase(session) {}
+    : CallBase(session) {
+        m_req.cptr = request;
+    }
 
     const JSONRPC::BatchRequest *jsonrpc() const {
-        return m_req;
+        return m_req.cptr;
+    }
+
+    JSONRPC::BatchRequest *jsonrpc() {
+        return m_req.ptr;
     }
 
     // Returns an empty unique_ptr if there should be no response
     template<class Database, class Datamodel>
-    std::unique_ptr<JSONRPC::Response> complete(Database &db) const;
+    std::unique_ptr<JSONRPC::ResponseBase> complete(Database &db) const;
 
 private:
-    const JSONRPC::BatchRequest *m_req;
+    union {
+        JSONRPC::BatchRequest *ptr;
+        const JSONRPC::BatchRequest *cptr;
+    } m_req;
 };
 
 class SingleCall : public CallBase {
     friend class BatchCall;
 
 public:
+    SingleCall(JSONRPC::SingleRequest *request, Session *session)
+    : CallBase(session) {
+        m_req.ptr = request;
+    }
+
     SingleCall(const JSONRPC::SingleRequest *request, Session *session)
-    : m_req(request), CallBase(session) {}
+    : CallBase(session) {
+        m_req.cptr = request;
+    }
 
     const JSONRPC::SingleRequest *jsonrpc() const {
-        return m_req;
+        return m_req.cptr;
+    }
+
+    JSONRPC::SingleRequest *jsonrpc() {
+        return m_req.ptr;
     }
 
     template<class Database, class Datamodel>
-    std::unique_ptr<JSONRPC::Response> complete(Database &db,
+    std::unique_ptr<JSONRPC::ResponseBase> complete(Database &db,
         rapidjson::Document::AllocatorType *alloc = nullptr) const;
 
 private:
@@ -114,32 +139,52 @@ private:
     rapidjson::Value complete_datamodel_call(Database &db,
         rapidjson::Document::AllocatorType &alloc) const;
 
-    const JSONRPC::SingleRequest *m_req;
+    union {
+        JSONRPC::SingleRequest *ptr;
+        const JSONRPC::SingleRequest *cptr;
+    } m_req;
 };
 
+// transient object - doesn't allocate or free heap memory, doesn't increment
+// refcounts.
 class ObjectCallParams {
 public:
     ObjectCallParams(const SingleCall &call) {
-        rapidjson::Value::ConstMemberIterator params =
-         call.jsonrpc()->value().FindMember("params");
-        if (params == call.jsonrpc()->value().MemberEnd())
+        if (!call.jsonrpc()->has_params()) {
             throw RPC::exceptions::InvalidParameters("\"params\" is undefined "
                                                 "in a datamodel object call.");
-        if (!params->value.IsObject())
+        }
+
+        const rapidjson::Value &params = call.jsonrpc()->params();
+        if (!params.IsObject())
             throw RPC::exceptions::InvalidParameters("\"params\" is not a "
                              "JSONRPC object in a datamodel object call.");
-        m_params = &params->value;
+        m_params.cptr = &params;
+    }
+
+    ObjectCallParams(SingleCall &call) {
+        // creates params member if it doesn't exist and takes a pointer to it
+        m_params.ptr = &call.jsonrpc()->params(true);
+        if (!m_params.ptr->IsObject()) {
+            throw RPC::exceptions::InvalidParameters("\"params\" is undefined "
+                                                "in a datamodel object call.");
+        }
     }
 
     // makes operator[] available
     const rapidjson::Value &get() const {
-        return *m_params;
+        return *m_params.cptr;
+    }
+
+    rapidjson::Value &get() {
+        return *m_params.ptr;
     }
 
     // libinv API
     std::string id() const {
-        rapidjson::Value::ConstMemberIterator id = m_params->FindMember("id");
-        if (id == m_params->MemberEnd())
+        rapidjson::Value::ConstMemberIterator id =
+                  m_params.cptr->FindMember("id");
+        if (id == m_params.cptr->MemberEnd())
             return std::string();
         if (!id->value.IsString())
             throw RPC::exceptions::InvalidParameters("object id is not a string");
@@ -147,8 +192,9 @@ public:
     }
 
     std::string type() const {
-        rapidjson::Value::ConstMemberIterator type = m_params->FindMember("type");
-        if (type == m_params->MemberEnd())
+        rapidjson::Value::ConstMemberIterator type =
+                  m_params.cptr->FindMember("type");
+        if (type == m_params.cptr->MemberEnd())
             throw RPC::exceptions::InvalidParameters("\"type\" parameter undefined");
         if (!type->value.IsString())
             throw RPC::exceptions::InvalidParameters("object type is not a string");
@@ -157,55 +203,74 @@ public:
 
     const rapidjson::Value &operator[](const std::string &member) const {
         rapidjson::Value::ConstMemberIterator mit =
-              m_params->FindMember(member.c_str());
-        if (mit == m_params->MemberEnd()) {
+         m_params.cptr->FindMember(member.c_str());
+        if (mit == m_params.cptr->MemberEnd()) {
             throw RPC::exceptions::InvalidParameters("\"" + member +
                                           "\" parameter undefined");
         }
         return mit->value;
     }
 
-    bool has_member(const char *member) {
-        return m_params->HasMember(member);
+    rapidjson::Value &operator[](const std::string &member) {
+        rapidjson::Value::MemberIterator mit =
+          m_params.ptr->FindMember(member.c_str());
+        if (mit == m_params.ptr->MemberEnd()) {
+            throw RPC::exceptions::InvalidParameters("\"" + member +
+                                          "\" parameter undefined");
+        }
+        return mit->value;
+    }
+
+    bool has_member(const char *member) const {
+        return m_params.cptr->HasMember(member);
     }
 
 private:
-    const rapidjson::Value *m_params;
+    union {
+        rapidjson::Value *ptr;
+        const rapidjson::Value *cptr;
+    } m_params;
 };
 
 template<class Database, class Datamodel>
-std::unique_ptr<JSONRPC::Response> BatchCall::complete(Database &db) const {
-    JSONRPC::BatchResponse *batch_response = new JSONRPC::BatchResponse;
-    std::unique_ptr<JSONRPC::Response> response_uniqptr(batch_response);
-    m_req->foreach([&, this](const JSONRPC::SingleRequest &single_request){
+std::unique_ptr<JSONRPC::ResponseBase> BatchCall::complete(Database &db)
+                                                                 const {
+    JSONRPC::BatchResponse *bresp = new JSONRPC::BatchResponse;
+    std::unique_ptr<JSONRPC::ResponseBase> resp_uniqptr(bresp);
+    m_req.cptr->foreach([&, this](const JSONRPC::SingleRequest &srequest){
         try {
-            const SingleCall scall(&single_request, m_session);
-            rapidjson::Value single_result =
-                scall.complete_call<Database, Datamodel>(db,
-                               batch_response->allocator());
-            batch_response->push_back(single_request, single_result);
+            JSONRPC::SingleResponse sresp(&bresp->allocator());
+            const SingleCall scall(&srequest, m_session);
+
+            rapidjson::Value sresult =
+              scall.complete_call<Database, Datamodel>(db, bresp->allocator());
+            sresp.assign(srequest, sresult);
+            bresp->push_back(std::move(sresp));
         } catch (const inventory::exceptions::ExceptionBase &e) {
-            batch_response->push_back(single_request, e);
+            JSONRPC::SingleResponse sresp(&bresp->allocator());
+
+            sresp.assign(srequest, e);
+            bresp->push_back(std::move(sresp));
         }
     });
-    return response_uniqptr;
+    return resp_uniqptr;
 }
 
 template<class Database, class Datamodel>
-std::unique_ptr<JSONRPC::Response> SingleCall::complete(Database &db,
-                   rapidjson::Document::AllocatorType *alloc) const {
+std::unique_ptr<JSONRPC::ResponseBase> SingleCall::complete(Database &db,
+                       rapidjson::Document::AllocatorType *alloc) const {
     JSONRPC::SingleResponse *single_response = new JSONRPC::SingleResponse;
-    std::unique_ptr<JSONRPC::Response> response_uniqptr(single_response);
+    std::unique_ptr<JSONRPC::ResponseBase> response_uniqptr(single_response);
 
     if (alloc == nullptr)
         alloc = &single_response->allocator();
 
     try {
         rapidjson::Value result = complete_call<Database, Datamodel>(db, *alloc);
-        single_response->assign(*m_req, result);
+        single_response->assign(*m_req.cptr, result);
     } catch (const inventory::exceptions::ExceptionBase &e) {
         // catch everything; subject to change
-        single_response->assign(*m_req, e);
+        single_response->assign(*m_req.cptr, e);
     }
     return response_uniqptr;
 }
@@ -255,7 +320,7 @@ public:
     template<class Database, class Datamodel>
     std::unique_ptr<JSONRPC::Response> complete(Database &db) { 
         std::unique_ptr<JSONRPC::Request> request(new JSONRPC::Request);
-        std::unique_ptr<JSONRPC::Response> response;
+        std::unique_ptr<JSONRPC::ResponseBase> response;
 
         try {
             request->parse(m_reqstr);
@@ -269,11 +334,13 @@ public:
                 response = single.complete<Database, Datamodel>(db);
             }
         } catch (const JSONRPC::exceptions::ParseError &e) {
-            response.reset(new JSONRPC::Response);
-            response->assign(e);
+            JSONRPC::SingleResponse *sresp = new JSONRPC::SingleResponse;
+            sresp->assign(e);
+            response.reset(sresp);
         } catch (const JSONRPC::exceptions::InvalidRequest &e) {
-            response.reset(new JSONRPC::Response);
-            response->assign(e);
+            JSONRPC::SingleResponse *sresp = new JSONRPC::SingleResponse;
+            sresp->assign(e);
+            response.reset(sresp);
         }
 
         if (response)

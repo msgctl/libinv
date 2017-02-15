@@ -16,7 +16,7 @@ static char **g_argv;
 
 class MockSession : public RPC::Session {
 public:
-    virtual void reply(std::unique_ptr<JSONRPC::Response> response) {
+    virtual void reply(std::unique_ptr<JSONRPC::ResponseBase> response) {
         std::cout << std::string(*response) << std::endl;
     }
 };
@@ -118,7 +118,7 @@ TEST_F(RPCTest, RPC_attribute_list) {
 
 TEST_F(RPCTest, RPC_batch) {
     std::string reqstr = "[{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
-       "\"datamodel.attribute.list\", \"params\": {\"type\": \"Item\"}}]";
+             "\"datamodel.repr.get\", \"params\": {\"type\": \"Item\"}}]";
    
     RPC::Request req(reqstr, m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
