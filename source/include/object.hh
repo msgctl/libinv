@@ -184,8 +184,8 @@ public:
 
     rapidjson::Value rpc_call(Database &db, const RPC::SingleCall &call,
                             rapidjson::Document::AllocatorType &alloc) {
-        // set the index id if specified in the request or else a new id will
-        // be generated automatically
+        // set the index id if specified in the request or else a new id (and
+        // object) will be generated automatically 
         if (!RPC::ObjectCallParams(call).id().empty()) {
             this->IndexType<Database, Derived>::get(db,
                      RPC::ObjectCallParams(call).id());
@@ -196,6 +196,9 @@ public:
                     this->IndexType<Database, Derived>::id()
                 );
             }
+        } else {
+            // create a new object
+            commit(db);
         }
 
         try {

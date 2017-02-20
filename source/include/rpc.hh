@@ -5,9 +5,11 @@
 #include <functional>
 #include <algorithm>
 #include <stdexcept>
+#include <future>
 #include <rapidjson/document.h>
 #include "datamodel.hh"
 #include "jsonrpc.hh"
+#include "workqueue.hh"
 
 namespace inventory {
 namespace RPC {
@@ -52,22 +54,107 @@ namespace exceptions {
     };
 }
 
-class Session {
+class Client;
+class ClientSession {
 public:
-    virtual void reply(std::unique_ptr<JSONRPC::ResponseBase> response) = 0;
+    typedef std::function<void(std::unique_ptr<JSONRPC::Response>)>
+                                                   ResponseHandler;
+
+    virtual void notify(const JSONRPC::RequestBase &request) = 0;
+    virtual void notify_async(std::unique_ptr<JSONRPC::RequestBase>
+                                                      request) = 0;
+
+    virtual std::unique_ptr<JSONRPC::Response> call(
+           const JSONRPC::RequestBase &request) = 0;
+    virtual void call_async(std::unique_ptr<JSONRPC::RequestBase> request,
+                                            ResponseHandler response) = 0;
+
+    virtual void terminate();
+
+protected:
+    ClientSession(Client *client)
+    : m_client(client) {}
+
+    Client *m_client;
+};
+
+class Server;
+class ServerSession {
+public:
+    // called by RPC::Request instances
+    virtual void reply_async(std::unique_ptr<JSONRPC::ResponseBase>
+                                                     response) = 0;
+    virtual void terminate();
+
+protected:
+    ServerSession(Server *server)
+    : m_server(server) {}
+
+    Server *m_server;
+};
+
+class ClientRequest;
+class Client {
+    friend class ClientSession;
+public:
+    virtual ~Client() {}
+
+    Workqueue<JSONRPC::RequestBase> &workqueue() {
+        return *m_wq;
+    }
+
+    virtual std::shared_ptr<ClientSession> create_session() = 0;
+
+protected:
+    Client(std::shared_ptr<Workqueue<JSONRPC::RequestBase>> workqueue)
+    : m_wq(workqueue) {}
+
+    void remove_session(ClientSession *session);
+
+    std::shared_ptr<Workqueue<JSONRPC::RequestBase>> m_wq;
+    std::vector<std::shared_ptr<ClientSession>> m_sessions;
+};
+
+class ServerRequest;
+class Server {
+    friend class ServerSession;
+
+public:
+    typedef std::function<void(ServerRequest &)> RequestHandler;
+
+    virtual ~Server() {}
+
+    Workqueue<ServerRequest> &workqueue() {
+        return *m_wq;
+    }
+
+    RequestHandler request_handler() {
+        return m_request_handler;
+    }
+
+protected:
+    Server(std::shared_ptr<Workqueue<ServerRequest>> workqueue,
+                                RequestHandler request_handler)
+    : m_wq(workqueue), m_request_handler(request_handler) {}
+
+    void remove_session(ServerSession *session);
+
+    std::shared_ptr<Workqueue<ServerRequest>> m_wq;
+    RequestHandler m_request_handler;
+    std::vector<std::shared_ptr<ServerSession>> m_sessions;
 };
 
 class CallBase {
 public:
-    CallBase(Session *session)
+    CallBase(ServerSession *session)
     : m_session(session) {}
 
-    Session *session() {
+    ServerSession *session() {
         return m_session;
     }
 
 protected:
-    Session *m_session;
+    ServerSession *m_session;
 };
 
 class SingleCall;
@@ -75,12 +162,12 @@ class BatchCall : public CallBase {
     friend class SingleCall;
 
 public:
-    BatchCall(JSONRPC::BatchRequest *request, Session *session)
+    BatchCall(JSONRPC::BatchRequest *request, ServerSession *session)
     : CallBase(session) {
         m_req.ptr = request;
     }
 
-    BatchCall(const JSONRPC::BatchRequest *request, Session *session)
+    BatchCall(const JSONRPC::BatchRequest *request, ServerSession *session)
     : CallBase(session) {
         m_req.cptr = request;
     }
@@ -108,12 +195,12 @@ class SingleCall : public CallBase {
     friend class BatchCall;
 
 public:
-    SingleCall(JSONRPC::SingleRequest *request, Session *session)
+    SingleCall(JSONRPC::SingleRequest *request, ServerSession *session)
     : CallBase(session) {
         m_req.ptr = request;
     }
 
-    SingleCall(const JSONRPC::SingleRequest *request, Session *session)
+    SingleCall(const JSONRPC::SingleRequest *request, ServerSession *session)
     : CallBase(session) {
         m_req.cptr = request;
     }
@@ -307,29 +394,95 @@ class DatamodelHandler {
 
 public:
     rapidjson::Value complete(Database &db,
-                rapidjson::Document::AllocatorType &alloc) {
-    }
+                rapidjson::Document::AllocatorType &alloc) {}
+    
 };
 
-class Request { 
-public:
-    Request(const std::string &request, std::shared_ptr<Session> session)
-    : m_session(session), m_reqstr(request) {}
+class ClientRequest {
+    // Not meant to be caught
+    class InvalidUse : public std::runtime_error {
+    public:
+        InvalidUse(const char *desc)
+        : std::runtime_error(std::string("Invalid use of ClientRequest class:") +
+                                                                         desc) {}
+    };
 
-    // TODO call from a workqueue
+public:
+    typedef std::function<void(const JSONRPC::Response &)> ResponseHandler;
+    typedef std::future<std::unique_ptr<JSONRPC::Response>> ResponseFuture;
+
+
+    ClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
+                         std::shared_ptr<ClientSession> session)
+    : m_session(session), m_request(std::move(request)) {}
+
+    ClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
+                         std::shared_ptr<ClientSession> session,
+                                        ResponseHandler handler)
+    : m_session(session), m_request(std::move(request)), m_handler(handler) {}
+
+    void complete() {
+        m_response = m_session->call(*m_request);
+        m_response->parse();
+        if (m_handler)
+            m_handler(*m_response);
+        m_promise.set_value();
+    }
+
+    void complete_async() {
+        m_session->call_async(std::move(m_request),
+            [this](std::unique_ptr<JSONRPC::Response> response) -> void {
+                m_response = std::move(response);
+                m_response->parse();
+                if (m_handler)
+                    m_handler(*m_response);
+                m_promise.set_value();
+            }
+        );
+    }
+
+    bool completed() const {
+        return (bool)(m_response);
+    }
+
+    const JSONRPC::Response &jsonrpc_response() const {
+        if (!completed()) {
+            throw InvalidUse("Called jsonrpc_response() on a not yet "
+                                                "completed request.");
+        }
+        return *m_response;
+    }
+
+    std::future<void> future() {
+        return m_promise.get_future();
+    }
+
+private:
+    std::shared_ptr<ClientSession> m_session;
+    std::unique_ptr<JSONRPC::RequestBase> m_request;
+    std::unique_ptr<JSONRPC::Response> m_response;
+    ResponseHandler m_handler;
+    std::promise<void> m_promise;
+};
+
+class ServerRequest { 
+public:
+    ServerRequest(std::unique_ptr<JSONRPC::Request> request,
+                       std::shared_ptr<ServerSession> session) 
+    : m_session(session), m_request(std::move(request)) {}
+
     template<class Database, class Datamodel>
-    std::unique_ptr<JSONRPC::Response> complete(Database &db) { 
-        std::unique_ptr<JSONRPC::Request> request(new JSONRPC::Request);
+    void complete(Database &db) { 
         std::unique_ptr<JSONRPC::ResponseBase> response;
 
         try {
-            request->parse(m_reqstr);
-            if (request->is_batch()) {
-                JSONRPC::BatchRequest breq(std::move(*request.release()));
+            m_request->parse(); // throws
+            if (m_request->is_batch()) {
+                JSONRPC::BatchRequest breq(std::move(*m_request.release()));
                 BatchCall batch(&breq, m_session.get());
                 response = batch.complete<Database, Datamodel>(db);
             } else {
-                JSONRPC::SingleRequest sreq(std::move(*request.release()));
+                JSONRPC::SingleRequest sreq(std::move(*m_request.release()));
                 SingleCall single(&sreq, m_session.get());
                 response = single.complete<Database, Datamodel>(db);
             }
@@ -344,12 +497,12 @@ public:
         }
 
         if (response)
-            m_session->reply(std::move(response));
+            m_session->reply_async(std::move(response));
     }
 
 private:
-    std::string m_reqstr;
-    std::shared_ptr<Session> m_session;
+    std::shared_ptr<ServerSession> m_session;
+    std::unique_ptr<JSONRPC::Request> m_request;
 };
 
 template<class Database, class Mixin>

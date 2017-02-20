@@ -72,7 +72,6 @@ namespace exceptions {
 }
 
 class Namespace {
-public:
     // Not meant to be caught
     class InvalidUse : public std::runtime_error {
     public:
@@ -81,6 +80,7 @@ public:
                                                                      desc) {}
     };
 
+public:
     Namespace(std::string method);
 
     std::string operator[](int n) const;
@@ -126,6 +126,9 @@ public:
     rapidjson::Document::AllocatorType &allocator() const;
 
     operator std::string() const;
+    std::string string() const {
+        return operator std::string();
+    }
 
     bool is_batch() const;
     bool is_single() const;
@@ -135,13 +138,12 @@ protected:
     static bool is_single(const rapidjson::Value &request);
 
     JSONRPCBase() {}
-
     JSONRPCBase(enum rapidjson::Type type, rapidjson::Document::AllocatorType
                                                           *alloc = nullptr) {
         alloc_document(type, alloc);
     }
-
     JSONRPCBase(JSONRPCBase &&base);
+    virtual ~JSONRPCBase() {}
 
     void alloc_document(enum rapidjson::Type type = rapidjson::kNullType,
                     rapidjson::Document::AllocatorType *alloc = nullptr);
@@ -153,6 +155,9 @@ protected:
 };
 
 class RequestBase : public JSONRPCBase {
+public:
+    virtual ~RequestBase() {}
+
 protected:
     static void validate(const rapidjson::Value &request);
     static void validate_single(const rapidjson::Value &request);
@@ -160,6 +165,9 @@ protected:
     static bool is_notification(const rapidjson::Value &request);
 
     using JSONRPCBase::JSONRPCBase;
+    RequestBase() {}
+    RequestBase(RequestBase &&req)
+    : JSONRPCBase(std::move(req)) {};
 };
 
 class Request : public RequestBase {
@@ -167,23 +175,56 @@ public:
     Request() 
     : RequestBase(rapidjson::kNullType) {}
 
-    void parse(const std::string &reqstr) {
-        RequestBase::parse(reqstr);
+    Request(const std::string &reqstr) 
+    : RequestBase(rapidjson::kNullType), m_text(reqstr) {}
+
+    Request(std::string &&reqstr) 
+    : RequestBase(rapidjson::kNullType), m_text(std::move(reqstr)) {}
+
+    virtual ~Request() {}
+
+    void assign(const std::string &reqstr) {
+        m_text = reqstr;
+    }
+
+    void assign(std::string &&reqstr) {
+        m_text = std::move(reqstr);
+    }
+
+    void parse() {
+        RequestBase::parse(m_text);
         validate(*m_jval);
     }
+
+    void parse(const std::string &reqstr) {
+        assign(reqstr);
+        parse();
+    }
+
+    void parse(std::string &&reqstr) {
+        assign(std::move(reqstr));
+        parse();
+    }
+
+protected:
+    std::string m_text;
 };
 
 class SingleRequest : public RequestBase {
 public:
     // SingleRequest instance with its separate Allocator (refcounting)
     SingleRequest()
-    : RequestBase(rapidjson::kObjectType) {}
+    : RequestBase(rapidjson::kObjectType) {
+        update_member("jsonrpc", gc_version);
+    }
 
     // Building from scratch to include in BatchRequest, with a BatchRequest
     // instance's allocator to elide a copy.
     // usecase: batch calls
     SingleRequest(rapidjson::Document::AllocatorType *alloc)
-    : RequestBase(rapidjson::kObjectType, alloc) {}
+    : RequestBase(rapidjson::kObjectType, alloc) {
+        update_member("jsonrpc", gc_version);
+    }
 
     // transient instance; see: BatchRequest::foreach()
     // Doesn't allocate or free heap memory.
@@ -206,6 +247,8 @@ public:
                                                            "a batch request.");
         }
     }
+
+    virtual ~SingleRequest() {}
 
     bool has_id() const;
 
@@ -278,6 +321,8 @@ public:
         }
     }
 
+    virtual ~BatchRequest() {}
+
     template<class Callback>
     void foreach(Callback cb) const {
         for (rapidjson::Value::ValueIterator itr = m_jval->Begin();
@@ -306,6 +351,9 @@ public:
 };
 
 class ResponseBase : public JSONRPCBase {
+public:
+    virtual ~ResponseBase() {}
+
 protected:
     static void validate(const rapidjson::Value &request);
     static void validate_single(const rapidjson::Value &request);
@@ -313,6 +361,9 @@ protected:
     static bool is_notification(const rapidjson::Value &request);
 
     using JSONRPCBase::JSONRPCBase;
+    ResponseBase() {}
+    ResponseBase(ResponseBase &&req)
+    : JSONRPCBase(std::move(req)) {};
 
     void add_jsonrpc_version(rapidjson::Value &doc);
     void add_request_id(rapidjson::Value &doc,
@@ -328,14 +379,32 @@ public:
     Response() 
     : ResponseBase(rapidjson::kNullType) {}
 
+    Response(const std::string &reqstr) 
+    : ResponseBase(rapidjson::kNullType), m_text(reqstr) {}
+
+    virtual ~Response() {}
+
     bool empty() const {
         return m_jval->IsNull();
     }
 
-    void parse(const std::string &reqstr) {
-        ResponseBase::parse(reqstr);
+    void assign(const std::string &reqstr) {
+        m_text = reqstr;
+    }
+
+    void parse() {
+        ResponseBase::parse(m_text);
         validate(*m_jval);
     }
+
+    // TODO move semantics
+    void parse(const std::string &reqstr) {
+        m_text = reqstr;
+        parse();
+    }
+
+protected:
+    std::string m_text;
 };
 
 class SingleResponse : public ResponseBase {
@@ -373,6 +442,8 @@ public:
                                                            "a batch response.");
         }
     }
+
+    virtual ~SingleResponse() {}
 
     void assign(const inventory::exceptions::ExceptionBase &e);
     void assign(const SingleRequest &request, rapidjson::Value &result);
@@ -415,6 +486,8 @@ public:
                                                        "a single response.");
         }
     } 
+
+    virtual ~BatchResponse() {}
 
     // Remember to construct SingleResponse with a BatchResponse instance
     // allocator if it's ever going to be a part of BatchResponse.

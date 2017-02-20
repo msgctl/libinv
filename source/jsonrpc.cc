@@ -130,8 +130,8 @@ void ResponseBase::validate(const rapidjson::Value &request) {
     } else if (is_single(request)) {
         validate_single(request);
     } else {
-        throw JSONRPC::exceptions::InvalidResponse("the request must be an "
-                                                      "object or an array");
+        throw JSONRPC::exceptions::InvalidResponse("the response must be an "
+                                                       "object or an array");
     }
 }
 
@@ -238,7 +238,7 @@ rapidjson::Document::AllocatorType &JSONRPCBase::allocator() const {
 JSONRPCBase::operator std::string() const {
     rapidjson::StringBuffer esb;
     rapidjson::PrettyWriter<rapidjson::StringBuffer> ewriter(esb);
-    m_jdoc->Accept(ewriter);
+    m_jval->Accept(ewriter);
     return esb.GetString();
 }
 
@@ -296,13 +296,14 @@ const Namespace &SingleRequest::namespaces() const {
 }
 
 void SingleRequest::update_member(const char *key, const char *svalue) {
-    rapidjson::Value::MemberIterator jid =
-                 m_jval->FindMember("id");
-    if (jid == m_jval->MemberEnd()) {
+    rapidjson::Value::MemberIterator jmemb =
+                    m_jval->FindMember(key);
+    if (jmemb == m_jval->MemberEnd()) {
         m_jval->AddMember(rapidjson::StringRef(key),
          rapidjson::StringRef(svalue), allocator());
+    } else {
+        jmemb->value.SetString(svalue, allocator());
     }
-    jid->value.SetString(svalue, allocator());
 }
 
 void SingleRequest::update_namespaces() const {
@@ -313,7 +314,7 @@ void SingleRequest::update_namespaces() const {
 void ResponseBase::add_jsonrpc_version(rapidjson::Value &doc) {
     rapidjson::Value jversion;
     jversion.SetString(JSONRPC::gc_version, allocator());
-    doc.AddMember("version", jversion, allocator());
+    doc.AddMember("jsonrpc", jversion, allocator());
 }
 
 void ResponseBase::add_request_id(rapidjson::Value &doc,

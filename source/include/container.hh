@@ -152,8 +152,8 @@ public:
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> ret({
             RPC::Method<Database, self>("attribute.list", &self::rpc_attribute_list),
-            RPC::Method<Database, self>("attribute.get", &self::rpc_attribute_set),
-            RPC::Method<Database, self>("attribute.set", &self::rpc_attribute_get),
+            RPC::Method<Database, self>("attribute.get", &self::rpc_attribute_get),
+            RPC::Method<Database, self>("attribute.set", &self::rpc_attribute_set),
             RPC::Method<Database, self>("attribute.repr.get", &self::rpc_repr_get),
         });
         return ret;

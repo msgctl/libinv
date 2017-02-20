@@ -14,9 +14,16 @@ using namespace inventory::types;
 static int g_argc;
 static char **g_argv;
 
-class MockSession : public RPC::Session {
+class MockSession : public RPC::ServerSession {
 public:
-    virtual void reply(std::unique_ptr<JSONRPC::ResponseBase> response) {
+    MockSession()
+    : RPC::ServerSession(nullptr) {}
+
+    virtual void reply(const JSONRPC::ResponseBase &response) {
+        std::cout << std::string(response) << std::endl;
+    }
+
+    virtual void reply_async(std::unique_ptr<JSONRPC::ResponseBase> response) {
         std::cout << std::string(*response) << std::endl;
     }
 };
@@ -51,23 +58,26 @@ TEST_F(RPCTest, CategoryMethodList) {
 
 TEST_F(RPCTest, ParseError) {
     std::string reqstr = "blah!";
-   
-    RPC::Request req(reqstr, m_session);
+  
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
 TEST_F(RPCTest, InvalidRequest_nomethod) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1}";
    
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
 TEST_F(RPCTest, InvalidRequest_badnamespace) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
                                                     "\"badspace.blah\"}";
-   
-    RPC::Request req(reqstr, m_session);
+
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -75,7 +85,8 @@ TEST_F(RPCTest, InvalidRequest_bad_datamodel_call_no_params) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
                                                    "\"datamodel.blah\"}";
    
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -83,7 +94,8 @@ TEST_F(RPCTest, InvalidRequest_bad_datamodel_call_empty_params) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
                                    "\"datamodel.blah\", \"params\": {}}";
    
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -91,7 +103,8 @@ TEST_F(RPCTest, InvalidRequest_bad_datamodel_call_nosuchtype) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
                    "\"datamodel.blah\", \"params\": {\"type\": \"bl\"}}";
    
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -99,7 +112,8 @@ TEST_F(RPCTest, InvalidRequest_bad_datamodel_call_nosuchrpc) {
     std::string reqstr = "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
                  "\"datamodel.blah\", \"params\": {\"type\": \"Item\"}}";
  
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -112,7 +126,8 @@ TEST_F(RPCTest, RPC_attribute_list) {
          "\"datamodel.attribute.list\", \"params\": {\"type\": \"Item\","
                                    " \"id\": \"" + testobj.id() + "\"}}";
     std::cout << reqstr << std::endl;
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -120,7 +135,8 @@ TEST_F(RPCTest, RPC_batch) {
     std::string reqstr = "[{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": "
              "\"datamodel.repr.get\", \"params\": {\"type\": \"Item\"}}]";
    
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 } 
 
@@ -133,7 +149,8 @@ TEST_F(RPCTest, RPC_repr_get) {
                "\"datamodel.repr.get\", \"params\": {\"type\": \"Item\","
                                    " \"id\": \"" + testobj.id() + "\"}}";
     std::cout << reqstr << std::endl;
-    RPC::Request req(reqstr, m_session);
+    std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
+    RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
 }
 

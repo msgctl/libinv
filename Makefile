@@ -1,7 +1,8 @@
 # Search the build directory for precompiled headers
 INC = -Ibuild -Isource/include -Igoogletest/googletest/include \
     -Irapidjson/include $(shell kcutilmgr conf -i)
-LIB = -Lbuild -Lgoogletest/googletest $(shell kcutilmgr conf -l) -luuid
+LIB = -Lbuild -Lgoogletest/googletest $(shell kcutilmgr conf -l) -luuid \
+    -lcurl -lmicrohttpd
 UNITTESTLIBS = -lpthread -lgtest_main -lgtest -luuid
 SOLIBS = $(shell kcutilmgr conf -l) -lpthread
 
@@ -47,7 +48,7 @@ SOFLAGS  := -shared
 .PHONY: all depend clean mrproper googletest submodules test \
             clean_testresults directories rapidjson docs deps
 
-all: directories depend $(TARGETS) test
+all: directories depend $(TARGETS)
 
 deps:
 	apt install libboost-dev
