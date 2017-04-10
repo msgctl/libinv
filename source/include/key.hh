@@ -5,7 +5,6 @@
 #include <string>
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/join.hpp>
-#include <uuid/uuid.h>
 
 /* google coding style */
 

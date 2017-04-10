@@ -112,6 +112,10 @@ public:
         return Attribute<self>(key, *this);
     }
 
+    Attribute<self> attribute(std::string key) {
+        return (*this)[key];
+    }
+
     rapidjson::Value rpc_attribute_list(Database &db, const RPC::SingleCall &call,
                                       rapidjson::Document::AllocatorType &alloc) {
         // never generate responses to notifications

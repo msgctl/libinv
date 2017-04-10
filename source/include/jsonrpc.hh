@@ -42,7 +42,7 @@ namespace exceptions {
         }
 
     public:
-        InvalidRequest(const std::string &description)
+        InvalidRequest(const std::string description)
         : ExceptionBase(errclass() + description) {}
 
         InvalidRequest(const char *description)
@@ -59,7 +59,7 @@ namespace exceptions {
         }
 
     public:
-        InvalidResponse(const std::string &description)
+        InvalidResponse(const std::string description)
         : ExceptionBase(errclass() + description) {}
 
         InvalidResponse(const char *description)
@@ -175,15 +175,16 @@ public:
     Request() 
     : RequestBase(rapidjson::kNullType) {}
 
-    Request(const std::string &reqstr) 
+    Request(const std::string reqstr) 
     : RequestBase(rapidjson::kNullType), m_text(reqstr) {}
 
-    Request(std::string &&reqstr) 
-    : RequestBase(rapidjson::kNullType), m_text(std::move(reqstr)) {}
+    // TODO msgctl
+    //Request(std::string &&reqstr) 
+    //: RequestBase(rapidjson::kNullType), m_text(std::move(reqstr)) {}
 
     virtual ~Request() {}
 
-    void assign(const std::string &reqstr) {
+    void assign(const std::string reqstr) {
         m_text = reqstr;
     }
 
@@ -194,16 +195,6 @@ public:
     void parse() {
         RequestBase::parse(m_text);
         validate(*m_jval);
-    }
-
-    void parse(const std::string &reqstr) {
-        assign(reqstr);
-        parse();
-    }
-
-    void parse(std::string &&reqstr) {
-        assign(std::move(reqstr));
-        parse();
     }
 
 protected:
@@ -264,11 +255,17 @@ public:
         return (*m_jval)["id"];
     }
 
+    std::string id_string() const {
+        if (!has_id())
+            throw InvalidUse("Called id_string() on an object without one.");
+        return (*m_jval)["id"].GetString();
+    }
+
     void erase_id() {
         m_jval->EraseMember("id");
     }
 
-    void id(const std::string &sid) {
+    void id(const std::string sid) {
         update_member("id", sid.c_str());
     }
 
@@ -276,7 +273,7 @@ public:
         return (*m_jval)["method"].GetString();
     }
 
-    void method(const std::string &sid) {
+    void method(const std::string sid) {
         update_member("method", sid.c_str());
         update_namespaces();
     }
@@ -379,7 +376,7 @@ public:
     Response() 
     : ResponseBase(rapidjson::kNullType) {}
 
-    Response(const std::string &reqstr) 
+    Response(const std::string reqstr) 
     : ResponseBase(rapidjson::kNullType), m_text(reqstr) {}
 
     virtual ~Response() {}
@@ -388,7 +385,7 @@ public:
         return m_jval->IsNull();
     }
 
-    void assign(const std::string &reqstr) {
+    void assign(const std::string reqstr) {
         m_text = reqstr;
     }
 
@@ -398,7 +395,7 @@ public:
     }
 
     // TODO move semantics
-    void parse(const std::string &reqstr) {
+    void parse(const std::string reqstr) {
         m_text = reqstr;
         parse();
     }

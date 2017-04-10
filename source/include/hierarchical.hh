@@ -32,6 +32,16 @@ public:
         object.m_up_id = derived.path();
     }
 
+    template<class AssocObject>
+    void insert(AssocObject &object) {
+        *this += object;
+    }
+
+    template<class T>
+    void insert(std::shared_ptr<T> aoptr) {
+        *this += *aoptr;
+    }
+
     void operator+=(const IndexKey &key) {
         m_down_ids.insert(key);
         m_add_down_ids.insert(key);
@@ -44,6 +54,16 @@ public:
 
         // TODO check integrity
         object.m_up_id.clear();
+    }
+
+    template<class AssocObject>
+    void remove(AssocObject &object) {
+        *this -= object;
+    }
+
+    template<class T>
+    void remove(std::shared_ptr<T> aoptr) {
+        *this -= *aoptr;
     }
 
     void operator-=(const IndexKey &key) {

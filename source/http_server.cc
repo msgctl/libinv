@@ -74,7 +74,7 @@ static int _http_handler(void *handler_cls,
         std::shared_ptr<HTTPServerSession> session =
                  server->create_session(connection);
         std::unique_ptr<JSONRPC::Request> jrequest(new JSONRPC::Request(
-                                                 std::move(*srequest)));
+                                                            *srequest));
         delete srequest;
         std::unique_ptr<RPC::ServerRequest> request(new RPC::ServerRequest(
                                             std::move(jrequest), session));

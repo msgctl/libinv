@@ -299,8 +299,11 @@ void SingleRequest::update_member(const char *key, const char *svalue) {
     rapidjson::Value::MemberIterator jmemb =
                     m_jval->FindMember(key);
     if (jmemb == m_jval->MemberEnd()) {
-        m_jval->AddMember(rapidjson::StringRef(key),
-         rapidjson::StringRef(svalue), allocator());
+        // TODO try RAPIDJSON_HAS_STDSTRING, do not copy
+        rapidjson::Value jkey(key, allocator());
+        rapidjson::Value jvalue(svalue, allocator());
+
+        m_jval->AddMember(jkey, jvalue, allocator());
     } else {
         jmemb->value.SetString(svalue, allocator());
     }
@@ -319,11 +322,15 @@ void ResponseBase::add_jsonrpc_version(rapidjson::Value &doc) {
 
 void ResponseBase::add_request_id(rapidjson::Value &doc,
                                  rapidjson::Value &id) {
-    doc.AddMember("id", id, allocator());
+    // TODO rapidjson move semantics, same for RequestBase
+    rapidjson::Value id_copy(id, allocator());
+    doc.AddMember("id", id_copy, allocator());
 }
 
 void ResponseBase::add_result(rapidjson::Value &doc,
                          rapidjson::Value &result) {
+    // TODO rapidjson move semantics
+    // TODO broken code, need to explicitly copy or move
     doc.AddMember("result", result, allocator());
 }
 

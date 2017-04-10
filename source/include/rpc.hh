@@ -10,6 +10,9 @@
 #include "datamodel.hh"
 #include "jsonrpc.hh"
 #include "workqueue.hh"
+#include "factory.hh"
+
+#include <iostream>
 
 namespace inventory {
 namespace RPC {
@@ -356,8 +359,14 @@ std::unique_ptr<JSONRPC::ResponseBase> SingleCall::complete(Database &db,
         rapidjson::Value result = complete_call<Database, Datamodel>(db, *alloc);
         single_response->assign(*m_req.cptr, result);
     } catch (const inventory::exceptions::ExceptionBase &e) {
+
+        std::cout << "debug request: " << m_req.cptr->string() << std::endl;
+
         // catch everything; subject to change
         single_response->assign(*m_req.cptr, e);
+        std::cout << "debug id type: " << m_req.cptr->id().GetType() << std::endl;
+//        std::cout << "debug id: " << m_req.cptr->id_string() << std::endl;
+        std::cout << "debug: " << single_response->string() << std::endl;
     }
     return response_uniqptr;
 }
@@ -398,7 +407,7 @@ public:
     
 };
 
-class ClientRequest {
+class ClientRequest : public std::enable_shared_from_this<ClientRequest> {
     // Not meant to be caught
     class InvalidUse : public std::runtime_error {
     public:
@@ -411,18 +420,27 @@ public:
     typedef std::function<void(const JSONRPC::Response &)> ResponseHandler;
     typedef std::future<std::unique_ptr<JSONRPC::Response>> ResponseFuture;
 
+protected:
+    friend class inventory::Factory<ClientRequest>;
 
     ClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
-                         std::shared_ptr<ClientSession> session)
+                           std::weak_ptr<ClientSession> session)
     : m_session(session), m_request(std::move(request)) {}
 
     ClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
-                         std::shared_ptr<ClientSession> session,
+                           std::weak_ptr<ClientSession> session,
                                         ResponseHandler handler)
     : m_session(session), m_request(std::move(request)), m_handler(handler) {}
 
+public:
+    virtual ~ClientRequest() {};
+
     void complete() {
-        m_response = m_session->call(*m_request);
+        {
+            auto session = m_session.lock();
+            m_response = session->call(*m_request);
+        }
+
         m_response->parse();
         if (m_handler)
             m_handler(*m_response);
@@ -430,13 +448,23 @@ public:
     }
 
     void complete_async() {
-        m_session->call_async(std::move(m_request),
-            [this](std::unique_ptr<JSONRPC::Response> response) -> void {
-                m_response = std::move(response);
-                m_response->parse();
-                if (m_handler)
-                    m_handler(*m_response);
-                m_promise.set_value();
+        std::weak_ptr<ClientRequest> this_weakptr = shared_from_this();
+        auto session = m_session.lock();
+        if (!session) // TODO throw
+            return;
+
+        session->call_async(std::move(m_request),
+            [this_weakptr](std::unique_ptr<JSONRPC::Response>
+                                          response) -> void {
+                auto request = this_weakptr.lock();
+                if (!request)
+                    return;
+
+                request->m_response = std::move(response);
+                request->m_response->parse();
+                if (request->m_handler)
+                    request->m_handler(*request->m_response);
+                request->m_promise.set_value();
             }
         );
     }
@@ -458,7 +486,7 @@ public:
     }
 
 private:
-    std::shared_ptr<ClientSession> m_session;
+    std::weak_ptr<ClientSession> m_session;
     std::unique_ptr<JSONRPC::RequestBase> m_request;
     std::unique_ptr<JSONRPC::Response> m_response;
     ResponseHandler m_handler;

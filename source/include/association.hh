@@ -37,6 +37,11 @@ public:
         object.associate(derived.path());
     }
 
+    template<class T>
+    void associate(std::shared_ptr<T> aoptr) {
+        this->associate(*aoptr);
+    }
+
     void associate(const IndexKey &key) {
         m_add.insert(key);
         m_remove.erase(key);
@@ -50,6 +55,11 @@ public:
 
         disassociate(object.path());
         object.disassociate(derived.path());
+    }
+
+    template<class T>
+    void disassociate(std::shared_ptr<T> aoptr) {
+        this->disassociate(*aoptr);
     }
 
     void disassociate(const IndexKey &key) {

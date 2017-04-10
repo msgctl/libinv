@@ -56,7 +56,9 @@ class Object : public IndexType<Database, Derived>,
                public Mixins<Database, Derived>...,
                public NullMixin<Database, Derived>,
                public DatamodelObject<Database>,
-               private RPC::MethodRoster<Database, Derived> {
+               private RPC::MethodRoster<Database, Derived>,
+               public std::enable_shared_from_this<Object<Database,
+                                  IndexType, Derived, Mixins...>> {
     typedef Object<Database, IndexType, Derived, Mixins...> self;
     friend class RPC::MethodRoster<Database, Derived>;
 
@@ -144,6 +146,8 @@ public:
     Object(Database &db)
     : IndexType<Database, Derived>(db) {}
 
+    virtual ~Object() {}
+
     void get(Database &db, std::string id) {
         this->IndexType<Database, Derived>::get(db, id);
         get(db);
@@ -153,10 +157,44 @@ public:
         Foreach<Mixins...>::get(*this, db);
     }
 
+    std::unique_ptr<JSONRPC::SingleRequest> create_get_request() {
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("datamodel.repr.get");
+        return jreq;
+    }
+
+    void get(std::shared_ptr<RPC::ClientSession> session,
+                                        std::string id) {
+
+    }
+
+    void get(std::shared_ptr<RPC::ClientSession> session) {
+        std::unique_ptr<JSONRPC::SingleRequest> jgetreq  = create_get_request();
+    }
+
+    std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
+                    RPC::ClientSession> session, std::string id) {
+        
+    }
+
+    std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
+                                    RPC::ClientSession> session) {
+
+    }
+
     void commit(Database &db) {
         // TODO
         this->IndexType<Database, Derived>::commit(db);
         Foreach<Mixins...>::commit(*this, db);
+    }
+
+    void commit(std::shared_ptr<RPC::ClientSession> session) {
+
+    }
+
+    std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
+                                                                              session) {
     }
 
     // TODO write remove
@@ -249,6 +287,7 @@ public:
         if (!obj_repr.IsObject())
             throw exceptions::InvalidRepr("repr is not a JSON object");
 
+        // assigns ID
         rapidjson::Value::ConstMemberIterator id = obj_repr.FindMember("id"); 
         if (id == obj_repr.MemberEnd())
             throw exceptions::InvalidRepr("repr lacks \"id\" member");
@@ -256,6 +295,7 @@ public:
             throw exceptions::InvalidRepr("id is not a string");
         self::assign_id(id->value.GetString()); 
 
+        // checks type
         rapidjson::Value::ConstMemberIterator type = obj_repr.FindMember("type");
         if (type == obj_repr.MemberEnd())
             throw exceptions::InvalidRepr("repr lacks \"type\" member");

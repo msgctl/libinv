@@ -2,7 +2,9 @@
 #define LIBINV_INDEX_HH
 #include <string>
 #include <kcutil.h>
+#include <uuid/uuid.h>
 #include "key.hh"
+#include "uuid.hh"
 
 /* google coding style */
 

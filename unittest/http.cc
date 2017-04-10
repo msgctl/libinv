@@ -59,34 +59,35 @@ TEST_F(HTTPTest, HTTPClient_complete_sync) {
     jreq->id("42");
     jreq->method("repr.get");
     cout << "request: " << jreq->string() << endl;
-    
-    ClientRequest req_handle(std::move(jreq), session);
+   
+    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session);
 
     cout << "calling complete() on ClientRequest instance" << endl;
-    req_handle.complete();
+    req_handle->complete();
 
-    cout << "response: " << req_handle.jsonrpc_response().string() << endl;
+    cout << "response: " << req_handle->jsonrpc_response().string() << endl;
 
     session->terminate();
 } 
 
 TEST_F(HTTPTest, HTTPClient_complete_async) {
     using namespace RPC;
+    using namespace std;
 
-    std::shared_ptr<ClientSession> session = m_client->create_session();
+    shared_ptr<ClientSession> session = m_client->create_session();
 
-    std::unique_ptr<JSONRPC::SingleRequest> jreq(new JSONRPC::SingleRequest);
-    jreq->id("42");
-    jreq->method("repr.get");
+    shared_ptr<Item<>> item = make<Item<>>(); 
+
+    std::unique_ptr<JSONRPC::SingleRequest> jreq = item->create_get_request();
     cout << "request: " << jreq->string() << endl;
     
-    ClientRequest req_handle(std::move(jreq), session);
+    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session);
 
     cout << "calling complete_async() on ClientRequest instance" << endl;
-    req_handle.complete_async();
+    req_handle->complete_async();
     cout << "waiting for the asynchronous request to finish" << endl;
-    req_handle.future().wait();
-    cout << "response: " << req_handle.jsonrpc_response().string() << endl;
+    req_handle->future().wait();
+    cout << "response: " << req_handle->jsonrpc_response().string() << endl;
 
     session->terminate();
 } 
@@ -101,16 +102,17 @@ TEST_F(HTTPTest, HTTPClient_async_response_handler) {
    
     std::string response_string;
     std::shared_ptr<ClientSession> session = m_client->create_session();
-    ClientRequest req_handle(std::move(jreq), session,
+
+    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session,
         [&](const JSONRPC::Response &response) -> void {
             response_string = response;
         }
     );
 
     cout << "calling complete_async() on ClientRequest instance" << endl;
-    req_handle.complete_async();
+    req_handle->complete_async();
     cout << "waiting for the asynchronous request to finish" << endl;
-    req_handle.future().wait();
+    req_handle->future().wait();
     cout << "response: " << response_string << endl;
 
     session->terminate();
