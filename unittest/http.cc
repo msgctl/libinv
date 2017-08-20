@@ -51,13 +51,25 @@ TEST_F(HTTPTest, HTTPServer) {
 }
 
 TEST_F(HTTPTest, HTTPClient_complete_sync) {
+    using namespace std;
     using namespace RPC;
 
     std::shared_ptr<ClientSession> session = m_client->create_session();
+    Shared<Item<>> first;
+    first["testattr"] = "test";
+    first->commit(session);
 
+    Shared<Item<>> second;
+    second->get(session, first->id());
+    cout << second["testattr"];
+
+    session->terminate();
+    
+
+/*
     std::unique_ptr<JSONRPC::SingleRequest> jreq(new JSONRPC::SingleRequest);
     jreq->id("42");
-    jreq->method("repr.get");
+    jreq->method("datamodel.repr.get");
     cout << "request: " << jreq->string() << endl;
    
     auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session);
@@ -68,6 +80,7 @@ TEST_F(HTTPTest, HTTPClient_complete_sync) {
     cout << "response: " << req_handle->jsonrpc_response().string() << endl;
 
     session->terminate();
+*/
 } 
 
 TEST_F(HTTPTest, HTTPClient_complete_async) {
@@ -76,13 +89,11 @@ TEST_F(HTTPTest, HTTPClient_complete_async) {
 
     shared_ptr<ClientSession> session = m_client->create_session();
 
-    shared_ptr<Item<>> item = make<Item<>>(); 
+    Shared<Item<>> item;
+    auto req_handle = item.ref().get_async(session);
 
-    std::unique_ptr<JSONRPC::SingleRequest> jreq = item->create_get_request();
-    cout << "request: " << jreq->string() << endl;
+    cout << "request: " << req_handle->string() << endl;
     
-    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session);
-
     cout << "calling complete_async() on ClientRequest instance" << endl;
     req_handle->complete_async();
     cout << "waiting for the asynchronous request to finish" << endl;
@@ -97,15 +108,18 @@ TEST_F(HTTPTest, HTTPClient_async_response_handler) {
 
     std::unique_ptr<JSONRPC::SingleRequest> jreq(new JSONRPC::SingleRequest);
     jreq->id("42");
-    jreq->method("repr.get");
+    jreq->method("datamodel.repr.get");
+    jreq->params(true);
+    jreq->params()["id"] = "obj-id";
+    jreq->params()["type"] = "Item";
     cout << "request: " << jreq->string() << endl;
    
     std::string response_string;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
     auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session,
-        [&](const JSONRPC::Response &response) -> void {
-            response_string = response;
+        [&](std::unique_ptr<JSONRPC::Response> response) -> void {
+            response_string = *response;
         }
     );
 

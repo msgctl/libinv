@@ -12,6 +12,7 @@
 #include "workqueue.hh"
 #include "factory.hh"
 
+// TODO remove
 #include <iostream>
 
 namespace inventory {
@@ -417,7 +418,7 @@ class ClientRequest : public std::enable_shared_from_this<ClientRequest> {
     };
 
 public:
-    typedef std::function<void(const JSONRPC::Response &)> ResponseHandler;
+    typedef std::function<void(std::unique_ptr<JSONRPC::Response>)> ResponseHandler;
     typedef std::future<std::unique_ptr<JSONRPC::Response>> ResponseFuture;
 
 protected:
@@ -443,7 +444,7 @@ public:
 
         m_response->parse();
         if (m_handler)
-            m_handler(*m_response);
+            m_handler(std::move(m_response));
         m_promise.set_value();
     }
 
@@ -463,7 +464,7 @@ public:
                 request->m_response = std::move(response);
                 request->m_response->parse();
                 if (request->m_handler)
-                    request->m_handler(*request->m_response);
+                    request->m_handler(std::move(request->m_response));
                 request->m_promise.set_value();
             }
         );
@@ -483,6 +484,10 @@ public:
 
     std::future<void> future() {
         return m_promise.get_future();
+    }
+
+    std::string string() const {
+        return m_request->string();
     }
 
 private:

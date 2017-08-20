@@ -219,6 +219,10 @@ public:
         return rdoc;
     }
 
+    void clear() {
+        // TODO
+    }
+
 private:
     void repr(rapidjson::Value &robj, rapidjson::Document::AllocatorType
                                                          &alloc) const {

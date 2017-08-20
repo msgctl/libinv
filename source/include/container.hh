@@ -189,6 +189,10 @@ public:
         attribute_set_batch(object);
     }
 
+    void clear() {
+        // TODO
+    }
+
 private:
     void attribute_set_batch(const rapidjson::Value &obj) {
         if (!obj.IsObject())

@@ -9,6 +9,7 @@
 #include "datamodel.hh"
 #include "exception.hh"
 #include "jsonrpc.hh"
+#include "factory.hh"
 
 namespace inventory {
 namespace exceptions {
@@ -31,6 +32,7 @@ class NullMixin : public RPC::MethodRoster<Database, NullMixin<Database,
 public:
     void get(Database &db) {}
     void commit(Database &db) {}
+    void clear() {}
 
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> methods({
@@ -136,6 +138,12 @@ class Object : public IndexType<Database, Derived>,
             if (sizeof...(Mixins_))
                 Foreach<Mixins_...>::mixin_list(ret);
         }
+
+        static void clear(self &object) {
+            object.T_<Database, Derived>::clear();
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::clear(object);
+        }
     };
 
 public:
@@ -157,30 +165,42 @@ public:
         Foreach<Mixins...>::get(*this, db);
     }
 
-    std::unique_ptr<JSONRPC::SingleRequest> create_get_request() {
-        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
-        jreq->id(self::id() + ":" + uuid_string());
-        jreq->method("datamodel.repr.get");
-        return jreq;
+    void clear() {
+        Foreach<Mixins...>::clear(*this);
     }
 
-    void get(std::shared_ptr<RPC::ClientSession> session,
-                                        std::string id) {
-
+    void get(std::shared_ptr<RPC::ClientSession> session, std::string id) {
+        std::shared_ptr<RPC::ClientRequest> req_handle = get_async(session, id);
+        req_handle->complete();
     }
 
     void get(std::shared_ptr<RPC::ClientSession> session) {
-        std::unique_ptr<JSONRPC::SingleRequest> jgetreq  = create_get_request();
+        get(session, self::id());
     }
 
     std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
                     RPC::ClientSession> session, std::string id) {
-        
+        using namespace RPC;
+        using namespace JSONRPC;
+
+        std::unique_ptr<SingleRequest> jgetreq = build_get_request(id);
+        return Factory<ClientRequest>::create(std::move(jgetreq), session,
+            // called (asynchronously) only if object haven't been destroyed
+            // in the meantime
+            [this](std::unique_ptr<Response> response) -> void {
+                // TODO clear? also see get()
+                const SingleResponse sresp(response);
+                if (sresp.has_error())
+                    sresp.throw_ec();
+                else
+                    from_repr(sresp.result());
+            }
+        );
     }
 
     std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
                                     RPC::ClientSession> session) {
-
+        return get_async(session, self::id());
     }
 
     void commit(Database &db) {
@@ -190,11 +210,15 @@ public:
     }
 
     void commit(std::shared_ptr<RPC::ClientSession> session) {
-
+        std::shared_ptr<RPC::ClientRequest> req_handle = commit_async(session);
+        req_handle->complete();
     }
 
     std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
                                                                               session) {
+        // TODO foreach commit w/ session, coalesce requests
+        std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
+        return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session);
     }
 
     // TODO write remove
@@ -253,6 +277,8 @@ public:
                                    rapidjson::Document::AllocatorType &alloc) {
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         from_repr(jrepr);
+        remove_existing(db); 
+        // no need to check for preexisting objects here
         commit(db);
         return rapidjson::Value("OK");
     }
@@ -307,6 +333,7 @@ public:
                            + type->value.GetString() + " repr");
         }
 
+        clear();
         Foreach<Mixins...>::from_repr(*this, obj_repr);
     }
 
@@ -340,6 +367,51 @@ private:
         robj.AddMember("type", type, alloc);
 
         Foreach<Mixins...>::repr(*this, robj, alloc);
+    }
+
+    // removes any previous information about this object from the database
+    void remove_existing(Database &db) {
+        self ex_obj(self::id());
+        ex_obj.get(db);
+        ex_obj.clear();
+        ex_obj.commit(db);
+    }
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_get_request(std::string id) {
+        // TODO better
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("datamodel.repr.get");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jid;
+        jid.SetString(id.c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        return jreq;
+    }
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_create_request() {
+        // TODO better
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("datamodel.repr.create");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        Value jrepr = repr(jreq->allocator());
+        jreq->params().AddMember("repr", jrepr, jreq->allocator());
+
+        return jreq;
     }
 };
 

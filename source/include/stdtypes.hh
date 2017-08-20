@@ -13,6 +13,7 @@
 #include "container.hh"
 #include "rpc.hh"
 #include "datamodel.hh"
+#include "shared_wrapper.hh"
 
 namespace inventory {
 namespace types {

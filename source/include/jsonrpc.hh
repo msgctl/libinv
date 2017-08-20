@@ -424,20 +424,19 @@ public:
                                                            *alloc = nullptr) {
         m_jval = value;
         m_alloc = alloc;
-        if (is_batch(*m_jval)) {
-            throw InvalidUse("tried to make a SingleResponse() instance out of"
-                                                         " a batch response.");
-        }
+        check_batch();
     }
 
     // Converting from a generic, just-parsed Response instance.
     // usecase: single calls
     SingleResponse(Response &&resp)
     : ResponseBase(std::move(resp)) {
-        if (is_batch(*m_jval)) {
-            throw InvalidUse("tried to make a SingleResponse() instance out of "
-                                                           "a batch response.");
-        }
+        check_batch();
+    }
+
+    SingleResponse(std::unique_ptr<Response> resp)
+    : ResponseBase(std::move(*(response.release()))) {
+        check_batch();
     }
 
     virtual ~SingleResponse() {}
@@ -459,6 +458,10 @@ public:
         return ErrorCode(error()["ec"].GetInt());
     }
 
+    void throw_ec() const {
+        // TODO
+    }
+
     const char *error_message() const {
         return error()["message"].GetString();
     }
@@ -466,6 +469,13 @@ public:
     const rapidjson::Value &result() const;
 
 protected:
+    void check_batch() {
+        if (is_batch(*m_jval)) {
+            throw InvalidUse("tried to make a SingleResponse() instance out of "
+                                                           "a batch response.");
+        } 
+    }
+
     rapidjson::Value &error() const;
 };
 

@@ -8,6 +8,9 @@ namespace inventory {
 
 template<class T>
 class Factory {
+private:
+    Factory() {}
+
 public:
     static std::shared_ptr<T> create() {
         T* tptr = new T;

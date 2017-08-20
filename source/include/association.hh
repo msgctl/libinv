@@ -108,7 +108,7 @@ public:
     }
 
     template<class AssocObject>
-    std::vector<IndexKey> get_assoc_ids(Database &db) {
+    std::vector<IndexKey> get_assoc_ids() {
         std::vector<IndexKey> result;
         std::copy_if(m_assoc.begin(), m_assoc.end(),
             std::back_inserter(result), [](const IndexKey &k) {
@@ -120,7 +120,7 @@ public:
     template<class AssocObject>
     std::vector<AssocObject> get_assoc_objects(Database &db) {
         std::vector<AssocObject> result;
-        std::vector<IndexKey> assoc_ids = get_assoc_ids<AssocObject>(db);
+        std::vector<IndexKey> assoc_ids = get_assoc_ids<AssocObject>();
         for (IndexKey &key : assoc_ids) {
             AssocObject obj;
             obj.get(db, key.id_part());
@@ -154,6 +154,12 @@ public:
 
     void from_repr(const rapidjson::Value &array) {
         assoc_set_batch(array);
+    }
+
+    void clear() {
+        for (const IndexKey &key : m_assoc)
+            m_remove.insert(key);
+        m_assoc.clear();
     }
 
 private:
