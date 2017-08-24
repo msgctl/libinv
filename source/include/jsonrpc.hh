@@ -96,7 +96,7 @@ protected:
 
     void alloc_document(enum rapidjson::Type type = rapidjson::kNullType,
                     rapidjson::Document::AllocatorType *alloc = nullptr);
-    void parse(const std::string &reqstr);
+    void parse(std::string reqstr);
 
     rapidjson::Value *m_jval;
     rapidjson::Document::AllocatorType *m_alloc;
@@ -214,8 +214,8 @@ public:
         m_jval->EraseMember("id");
     }
 
-    void id(const std::string sid) {
-        update_member("id", sid.c_str());
+    void id(std::string sid) {
+        update_member("id", sid);
     }
 
     std::string method() const {
@@ -246,7 +246,7 @@ public:
     }
 
 private:
-    void update_member(const char *key, const char *svalue);
+    void update_member(std::string key, std::string svalue);
     void update_namespaces() const;
 
     mutable std::unique_ptr<Namespace> m_namespace;

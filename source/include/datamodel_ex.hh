@@ -7,7 +7,7 @@ namespace inventory {
 namespace exceptions {
     class NoSuchType : public ExceptionBase {
     public:
-        NoSuchType(const std::string &type)
+        NoSuchType(const std::string type)
         : ExceptionBase("No such type: " + type) {}
 
         virtual JSONRPC::ErrorCode ec() const {

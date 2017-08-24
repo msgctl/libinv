@@ -55,7 +55,7 @@ public:
     class Foreach {
     public:
         template <class Database_ = Database<>>
-        static DatamodelObject<Database_> *create(const std::string &type) {
+        static DatamodelObject<Database_> *create(std::string type) {
              if (T_<Database_>::type() == type)
                 return new T_<Database_>;
              if (sizeof...(Types_))
@@ -71,7 +71,7 @@ public:
     };
 
     template <class Database_ = Database<>>
-    static DatamodelObject<Database_> *create(const std::string &type) {
+    static DatamodelObject<Database_> *create(std::string type) {
         return Foreach<Types...>::template create<Database_>(type);
     }
 

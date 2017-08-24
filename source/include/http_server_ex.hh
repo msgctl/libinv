@@ -15,7 +15,7 @@ namespace inventory::RPC::exceptions {
         }
 
     public:
-        HTTPServerException(const std::string &method_name)
+        HTTPServerException(std::string method_name)
         : HTTPServerExceptionBase(errclass() + method_name) {}
 
         HTTPServerException(const char *method_name)

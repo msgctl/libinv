@@ -119,7 +119,7 @@ public:
         return elements();
     }
 
-    void from_string(const std::string &s) {
+    void from_string(std::string s) {
         *this = s;
     }
 

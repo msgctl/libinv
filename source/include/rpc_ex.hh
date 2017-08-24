@@ -16,7 +16,7 @@ namespace inventory::RPC::exceptions {
         }
 
     public:
-        NoSuchMethod(const std::string &method_name)
+        NoSuchMethod(std::string method_name)
         : ExceptionBase(errclass() + method_name) {}
 
         NoSuchMethod(const char *method_name)
@@ -33,7 +33,7 @@ namespace inventory::RPC::exceptions {
         }
 
     public:
-        InvalidParameters(const std::string &errdesc)
+        InvalidParameters(std::string errdesc)
         : ExceptionBase(errclass() + errdesc) {}
 
         InvalidParameters(const char *errdesc)

@@ -169,7 +169,7 @@ public:
     }
 
     std::string id() const {
-        char uuid[32];
+        char uuid[40];
         uuid_unparse(m_uuid, uuid);
         return std::string(uuid);
     }

@@ -138,7 +138,7 @@ class Object : public IndexType<Database, Derived>,
 
 public:
     Object() {}
-    Object(const std::string &id) {
+    Object(std::string id) {
         self::assign_id(id);
     }
     Object(Database &db)
@@ -383,7 +383,6 @@ private:
         if (!id->value.IsString())
             throw exceptions::InvalidRepr("id is not a string");
         return id->value.GetString();
-
     }
 
     // removes any previous information about this object from the database
@@ -415,7 +414,9 @@ private:
     std::unique_ptr<JSONRPC::SingleRequest> build_create_request() {
         // TODO better
         auto jreq = std::make_unique<JSONRPC::SingleRequest>();
-        jreq->id(self::id() + ":" + uuid_string());
+
+        std::string req_id = self::id() + ":" + uuid_string();
+        jreq->id(req_id);
         jreq->method("object.repr.create");
         jreq->params(true);
 

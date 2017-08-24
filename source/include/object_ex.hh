@@ -9,7 +9,7 @@ namespace exceptions {
     public:
         NoSuchObject() {}
 
-        NoSuchObject(const std::string &type, const std::string &id)
+        NoSuchObject(std::string type, std::string id)
         : ExceptionBase("No object of type " + type + " and id " + id + ".") {}
 
         virtual JSONRPC::ErrorCode ec() const {

@@ -255,7 +255,7 @@ void JSONRPCBase::alloc_document(enum rapidjson::Type type,
     m_alloc = &m_jdoc->GetAllocator();
 }
 
-void JSONRPCBase::parse(const std::string &reqstr) {
+void JSONRPCBase::parse(std::string reqstr) {
     if (!m_jdoc) {
         throw InvalidUse("Invalid use: tried to parse into a transient "
                                           "JSONRPC subclass instance.");
@@ -295,17 +295,17 @@ const Namespace &SingleRequest::namespaces() const {
     return *m_namespace;
 }
 
-void SingleRequest::update_member(const char *key, const char *svalue) {
+void SingleRequest::update_member(std::string key, std::string svalue) {
     rapidjson::Value::MemberIterator jmemb =
-                    m_jval->FindMember(key);
+            m_jval->FindMember(key.c_str());
     if (jmemb == m_jval->MemberEnd()) {
         // TODO try RAPIDJSON_HAS_STDSTRING, do not copy
-        rapidjson::Value jkey(key, allocator());
-        rapidjson::Value jvalue(svalue, allocator());
+        rapidjson::Value jkey(key.c_str(), allocator());
+        rapidjson::Value jvalue(svalue.c_str(), allocator());
 
         m_jval->AddMember(jkey, jvalue, allocator());
     } else {
-        jmemb->value.SetString(svalue, allocator());
+        jmemb->value.SetString(svalue.c_str(), allocator());
     }
 }
 

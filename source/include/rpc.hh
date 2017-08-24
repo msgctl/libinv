@@ -13,9 +13,6 @@
 #include "factory.hh"
 #include "rpc_ex.hh"
 
-// TODO remove
-#include <iostream>
-
 namespace inventory {
 namespace RPC {
 
@@ -321,14 +318,8 @@ std::unique_ptr<JSONRPC::ResponseBase> SingleCall::complete(Database &db,
         rapidjson::Value result = complete_call<Database, Datamodel>(db, *alloc);
         single_response->assign(*m_req.cptr, result);
     } catch (const inventory::exceptions::ExceptionBase &e) {
-
-        std::cout << "debug request: " << m_req.cptr->string() << std::endl;
-
         // catch everything; subject to change
         single_response->assign(*m_req.cptr, e);
-        std::cout << "debug id type: " << m_req.cptr->id().GetType() << std::endl;
-//        std::cout << "debug id: " << m_req.cptr->id_string() << std::endl;
-        std::cout << "debug: " << single_response->string() << std::endl;
     }
     return response_uniqptr;
 }
