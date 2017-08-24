@@ -46,14 +46,14 @@ TEST_F(DatamodelTest, repr_test) {
     Shared<Item<>> up;
     up += first;
 
-    rapidjson::Document first_repr = first.ref().repr();
+    rapidjson::Document first_repr = first->repr();
 
     Shared<Item<>> second;
-    second.ref().from_repr(first_repr);
+    second->from_repr(first_repr);
 
-    std::cout << first.ref().repr_string() << std::endl;
-    std::cout << second.ref().repr_string() << std::endl;
-    EXPECT_EQ(first.ref().repr_string(), second.ref().repr_string());
+    std::cout << first->repr_string() << std::endl;
+    std::cout << second->repr_string() << std::endl;
+    EXPECT_EQ(first->repr_string(), second->repr_string());
 }
 
 int main(int argc, char **argv) {

@@ -53,83 +53,60 @@ TEST_F(HTTPTest, HTTPServer) {
 TEST_F(HTTPTest, HTTPClient_complete_sync) {
     using namespace std;
     using namespace RPC;
-
     std::shared_ptr<ClientSession> session = m_client->create_session();
+
     Shared<Item<>> first;
     first["testattr"] = "test";
     first->commit(session);
 
     Shared<Item<>> second;
     second->get(session, first->id());
-    cout << second["testattr"];
-
-    session->terminate();
-    
-
-/*
-    std::unique_ptr<JSONRPC::SingleRequest> jreq(new JSONRPC::SingleRequest);
-    jreq->id("42");
-    jreq->method("datamodel.repr.get");
-    cout << "request: " << jreq->string() << endl;
-   
-    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session);
-
-    cout << "calling complete() on ClientRequest instance" << endl;
-    req_handle->complete();
-
-    cout << "response: " << req_handle->jsonrpc_response().string() << endl;
-
-    session->terminate();
-*/
+    EXPECT_EQ(first->repr_string(), second->repr_string());
 } 
 
 TEST_F(HTTPTest, HTTPClient_complete_async) {
     using namespace RPC;
     using namespace std;
-
-    shared_ptr<ClientSession> session = m_client->create_session();
-
-    Shared<Item<>> item;
-    auto req_handle = item.ref().get_async(session);
-
-    cout << "request: " << req_handle->string() << endl;
-    
-    cout << "calling complete_async() on ClientRequest instance" << endl;
-    req_handle->complete_async();
-    cout << "waiting for the asynchronous request to finish" << endl;
-    req_handle->future().wait();
-    cout << "response: " << req_handle->jsonrpc_response().string() << endl;
-
-    session->terminate();
-} 
-
-TEST_F(HTTPTest, HTTPClient_async_response_handler) {
-    using namespace RPC;
-
-    std::unique_ptr<JSONRPC::SingleRequest> jreq(new JSONRPC::SingleRequest);
-    jreq->id("42");
-    jreq->method("datamodel.repr.get");
-    jreq->params(true);
-    jreq->params()["id"] = "obj-id";
-    jreq->params()["type"] = "Item";
-    cout << "request: " << jreq->string() << endl;
-   
-    std::string response_string;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    auto req_handle = Factory<ClientRequest>::create(std::move(jreq), session,
-        [&](std::unique_ptr<JSONRPC::Response> response) -> void {
-            response_string = *response;
+    Shared<Item<>> first;
+    first["testattr"] = "test";
+    std::shared_ptr<ClientRequest> req_hnd = first->commit_async(session);
+    req_hnd->complete_async();
+    req_hnd->future().wait();
+
+    Shared<Item<>> second;
+    std::shared_ptr<ClientRequest> req2_hnd = second->get_async(session, first->id());
+    req2_hnd->complete_async();
+    req2_hnd->future().wait();
+    EXPECT_EQ(first->repr_string(), second->repr_string());
+} 
+
+TEST_F(HTTPTest, HTTPClient_async_complete_cb) {
+    using namespace RPC;
+    using namespace std;
+    std::shared_ptr<ClientSession> session = m_client->create_session();
+
+    Shared<Item<>> first;
+    first["testattr"] = "test";
+    std::shared_ptr<ClientRequest> req_hnd = first->commit_async(session);
+    req_hnd->complete_async();
+    req_hnd->future().wait();
+
+    Shared<Item<>> second;
+    std::shared_ptr<ClientRequest> req2_hnd = second->get_async(session, first->id());
+
+    bool complete_cb = false;
+    req2_hnd->push_complete_cb(
+        [&]() -> void {
+            complete_cb = true;
         }
     );
+    req2_hnd->complete_async();
+    req2_hnd->future().wait();
 
-    cout << "calling complete_async() on ClientRequest instance" << endl;
-    req_handle->complete_async();
-    cout << "waiting for the asynchronous request to finish" << endl;
-    req_handle->future().wait();
-    cout << "response: " << response_string << endl;
-
-    session->terminate();
+    EXPECT_EQ(first->repr_string(), second->repr_string());
+    EXPECT_EQ(complete_cb, true);
 }
 
 int main(int argc, char **argv) {

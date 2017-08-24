@@ -220,7 +220,8 @@ public:
     }
 
     void clear() {
-        // TODO
+        clear_up();
+        clear_down();
     }
 
 private:

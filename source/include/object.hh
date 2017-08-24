@@ -10,19 +10,9 @@
 #include "exception.hh"
 #include "jsonrpc.hh"
 #include "factory.hh"
+#include "object_ex.hh"
 
 namespace inventory {
-namespace exceptions {
-    class NoSuchObject : public ExceptionBase {
-    public:
-        NoSuchObject(const std::string &type, const std::string &id)
-        : ExceptionBase("No object of type " + type + " and id " + id + ".") {}
-
-        virtual JSONRPC::ErrorCode ec() const {
-            return JSONRPC::ErrorCode::INVALID_REQUEST;
-        }
-    };
-}
 
 template<class Database, class Derived>
 class NullMixin : public RPC::MethodRoster<Database, NullMixin<Database,
@@ -169,6 +159,11 @@ public:
         Foreach<Mixins...>::clear(*this);
     }
 
+    void remove(Database &db) {
+        clear();
+        IndexType<Database, Derived>::remove(db);
+    }
+
     void get(std::shared_ptr<RPC::ClientSession> session, std::string id) {
         std::shared_ptr<RPC::ClientRequest> req_handle = get_async(session, id);
         req_handle->complete();
@@ -184,18 +179,19 @@ public:
         using namespace JSONRPC;
 
         std::unique_ptr<SingleRequest> jgetreq = build_get_request(id);
-        return Factory<ClientRequest>::create(std::move(jgetreq), session,
-            // called (asynchronously) only if object haven't been destroyed
-            // in the meantime
+        // called (asynchronously) only if object haven't been destroyed
+        // in the meantime
+        auto handler = wrap_refcount_check(
             [this](std::unique_ptr<Response> response) -> void {
-                // TODO clear? also see get()
-                const SingleResponse sresp(response);
+                const SingleResponse sresp(std::move(response));
                 if (sresp.has_error())
                     sresp.throw_ec();
                 else
                     from_repr(sresp.result());
             }
         );
+        return Factory<ClientRequest>::create(std::move(jgetreq), session,
+                                                                 handler);
     }
 
     std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
@@ -220,8 +216,6 @@ public:
         std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
         return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session);
     }
-
-    // TODO write remove
 
     static std::vector<std::string> rpc_methods() {
         std::vector<std::string> ret;
@@ -273,8 +267,8 @@ public:
         return Foreach<Mixins...>::rpc_call(*this, db, call, alloc);
     }
 
-    rapidjson::Value rpc_repr_create(Database &db, const RPC::SingleCall &call,
-                                   rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_create(Database &db, const RPC::SingleCall &call,
+                              rapidjson::Document::AllocatorType &alloc) {
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         from_repr(jrepr);
         remove_existing(db); 
@@ -283,8 +277,25 @@ public:
         return rapidjson::Value("OK");
     }
 
-    rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
-                                rapidjson::Document::AllocatorType &alloc) {
+    rapidjson::Value rpc_remove(Database &db, const RPC::SingleCall &call,
+                              rapidjson::Document::AllocatorType &alloc) {
+        const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
+        get(db);
+        remove(db);
+        return rapidjson::Value("OK");
+    }
+
+    rapidjson::Value rpc_clear(Database &db, const RPC::SingleCall &call,
+                              rapidjson::Document::AllocatorType &alloc) {
+        const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
+        get(db);
+        clear();
+        commit(db);
+        return rapidjson::Value("OK");
+    }
+
+    rapidjson::Value rpc_get(Database &db, const RPC::SingleCall &call,
+                           rapidjson::Document::AllocatorType &alloc) {
         get(db);
         return repr(alloc);
     }
@@ -313,13 +324,7 @@ public:
         if (!obj_repr.IsObject())
             throw exceptions::InvalidRepr("repr is not a JSON object");
 
-        // assigns ID
-        rapidjson::Value::ConstMemberIterator id = obj_repr.FindMember("id"); 
-        if (id == obj_repr.MemberEnd())
-            throw exceptions::InvalidRepr("repr lacks \"id\" member");
-        if (!id->value.IsString())
-            throw exceptions::InvalidRepr("id is not a string");
-        self::assign_id(id->value.GetString()); 
+        self::assign_id(id_from_repr(obj_repr)); // throws
 
         // checks type
         rapidjson::Value::ConstMemberIterator type = obj_repr.FindMember("type");
@@ -343,8 +348,10 @@ public:
 
     static const std::vector<RPC::Method<Database, Derived>> &methods() {
         static const std::vector<RPC::Method<Database, Derived>> ret({
-            RPC::Method<Database, Derived>("repr.get", &self::rpc_repr_get),
-            RPC::Method<Database, Derived>("repr.create", &self::rpc_repr_create),
+            RPC::Method<Database, Derived>("repr.get", &self::rpc_get),
+            RPC::Method<Database, Derived>("repr.create", &self::rpc_create),
+            RPC::Method<Database, Derived>("remove", &self::rpc_remove),
+            RPC::Method<Database, Derived>("clear", &self::rpc_clear),
         });
         return ret;
     }
@@ -369,19 +376,28 @@ private:
         Foreach<Mixins...>::repr(*this, robj, alloc);
     }
 
+    std::string id_from_repr(const rapidjson::Value &obj_repr) {
+        rapidjson::Value::ConstMemberIterator id = obj_repr.FindMember("id"); 
+        if (id == obj_repr.MemberEnd())
+            throw exceptions::InvalidRepr("repr lacks \"id\" member");
+        if (!id->value.IsString())
+            throw exceptions::InvalidRepr("id is not a string");
+        return id->value.GetString();
+
+    }
+
     // removes any previous information about this object from the database
     void remove_existing(Database &db) {
         self ex_obj(self::id());
         ex_obj.get(db);
-        ex_obj.clear();
-        ex_obj.commit(db);
+        ex_obj.remove(db);
     }
 
     std::unique_ptr<JSONRPC::SingleRequest> build_get_request(std::string id) {
         // TODO better
         auto jreq = std::make_unique<JSONRPC::SingleRequest>();
         jreq->id(self::id() + ":" + uuid_string());
-        jreq->method("datamodel.repr.get");
+        jreq->method("object.repr.get");
         jreq->params(true);
 
         using namespace rapidjson;
@@ -400,7 +416,7 @@ private:
         // TODO better
         auto jreq = std::make_unique<JSONRPC::SingleRequest>();
         jreq->id(self::id() + ":" + uuid_string());
-        jreq->method("datamodel.repr.create");
+        jreq->method("object.repr.create");
         jreq->params(true);
 
         using namespace rapidjson;
@@ -412,6 +428,53 @@ private:
         jreq->params().AddMember("repr", jrepr, jreq->allocator());
 
         return jreq;
+    }
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_clear_request() {
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("object.clear");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jid;
+        jid.SetString(self::id().c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        return jreq;
+    }
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_remove_request() {
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("object.remove");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jid;
+        jid.SetString(self::id().c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        return jreq;
+    }
+
+    RPC::ClientRequest::ResponseHandler wrap_refcount_check(
+                  RPC::ClientRequest::ResponseHandler hnd) {
+        std::weak_ptr<self> this_weakptr = self::shared_from_this();
+        return [this_weakptr, hnd](std::unique_ptr<JSONRPC::Response>
+                                                  response) -> void {
+            auto sp = this_weakptr.lock();
+            if (sp)
+                hnd(std::move(response));
+        };
     }
 };
 

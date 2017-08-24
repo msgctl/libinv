@@ -11,52 +11,13 @@
 #include "jsonrpc.hh"
 #include "workqueue.hh"
 #include "factory.hh"
+#include "rpc_ex.hh"
 
 // TODO remove
 #include <iostream>
 
 namespace inventory {
 namespace RPC {
-namespace exceptions {
-    class ExceptionBase : public JSONRPC::exceptions::ExceptionBase {
-    public:
-        using JSONRPC::exceptions::ExceptionBase::ExceptionBase;
-    };
-
-    class NoSuchMethod : public ExceptionBase {
-        static const char *errclass() {
-            return "No such RPC method: ";
-        }
-
-    public:
-        NoSuchMethod(const std::string &method_name)
-        : ExceptionBase(errclass() + method_name) {}
-
-        NoSuchMethod(const char *method_name)
-        : ExceptionBase(errclass() + std::string(method_name)) {}
-
-        virtual JSONRPC::ErrorCode ec() const {
-            return JSONRPC::ErrorCode::METHOD_NOT_FOUND;
-        }
-    };
-
-    class InvalidParameters : public ExceptionBase {
-        static const char *errclass() {
-            return "Invalid parameters: ";
-        }
-
-    public:
-        InvalidParameters(const std::string &errdesc)
-        : ExceptionBase(errclass() + errdesc) {}
-
-        InvalidParameters(const char *errdesc)
-        : ExceptionBase(errclass() + std::string(errdesc)) {}
-
-        virtual JSONRPC::ErrorCode ec() const {
-            return JSONRPC::ErrorCode::INVALID_PARAMS;
-        }
-    };
-}
 
 class Client;
 class ClientSession {
@@ -380,7 +341,7 @@ rapidjson::Value SingleCall::complete_call(Database &db,
     // RPC handlers. Here only the first namespace specifier is removed.
     jsonrpc()->namespaces().pop();
     try {
-        if (_namespace == "datamodel")
+        if (_namespace == "object")
             return complete_datamodel_call<Database, Datamodel>(db, alloc);
     } catch (const std::out_of_range &e) {}
     throw JSONRPC::exceptions::InvalidRequest("There's no \"" + _namespace +
@@ -419,6 +380,7 @@ class ClientRequest : public std::enable_shared_from_this<ClientRequest> {
 
 public:
     typedef std::function<void(std::unique_ptr<JSONRPC::Response>)> ResponseHandler;
+    typedef std::function<void()> CompleteCallback;
     typedef std::future<std::unique_ptr<JSONRPC::Response>> ResponseFuture;
 
 protected:
@@ -430,11 +392,17 @@ protected:
 
     ClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
                            std::weak_ptr<ClientSession> session,
-                                        ResponseHandler handler)
-    : m_session(session), m_request(std::move(request)), m_handler(handler) {}
+                                        ResponseHandler handler,
+                std::vector<CompleteCallback> complete_cbs = {})
+    : m_session(session), m_request(std::move(request)), m_handler(handler),
+                                             m_complete_cbs(complete_cbs) {}
 
 public:
     virtual ~ClientRequest() {};
+
+    void push_complete_cb(CompleteCallback handler) {
+        m_complete_cbs.push_back(handler);
+    }
 
     void complete() {
         {
@@ -445,6 +413,8 @@ public:
         m_response->parse();
         if (m_handler)
             m_handler(std::move(m_response));
+        for (CompleteCallback &cb : m_complete_cbs)
+            cb();
         m_promise.set_value();
     }
 
@@ -465,6 +435,8 @@ public:
                 request->m_response->parse();
                 if (request->m_handler)
                     request->m_handler(std::move(request->m_response));
+                for (CompleteCallback &cb : request->m_complete_cbs)
+                    cb();
                 request->m_promise.set_value();
             }
         );
@@ -495,6 +467,7 @@ private:
     std::unique_ptr<JSONRPC::RequestBase> m_request;
     std::unique_ptr<JSONRPC::Response> m_response;
     ResponseHandler m_handler;
+    std::vector<CompleteCallback> m_complete_cbs;
     std::promise<void> m_promise;
 };
 

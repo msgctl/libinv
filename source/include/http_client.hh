@@ -7,30 +7,7 @@
 #include "rpc.hh"
 #include "jsonrpc.hh"
 #include "exception.hh"
-
-namespace inventory::RPC::exceptions {
-    class HTTPClientExceptionBase : public ExceptionBase {
-    public:
-        using RPC::exceptions::ExceptionBase::ExceptionBase;
-    };
-
-    class HTTPClientException : public HTTPClientExceptionBase {
-        static const char *errclass() {
-            return "HTTP client exception: ";
-        }
-
-    public:
-        HTTPClientException(const std::string &method_name)
-        : HTTPClientExceptionBase(errclass() + method_name) {}
-
-        HTTPClientException(const char *method_name)
-        : HTTPClientExceptionBase(errclass() + std::string(method_name)) {}
-
-        virtual JSONRPC::ErrorCode ec() const {
-            return JSONRPC::ErrorCode::INTERNAL_ERROR;
-        }
-    };
-}
+#include "http_client_ex.hh"
 
 namespace inventory::RPC {
 

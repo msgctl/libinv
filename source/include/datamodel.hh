@@ -11,20 +11,9 @@
 #include "database.hh"
 #include "exception.hh"
 #include "jsonrpc.hh"
+#include "datamodel_ex.hh"
 
 namespace inventory {
-namespace exceptions {
-    class NoSuchType : public ExceptionBase {
-    public:
-        NoSuchType(const std::string &type)
-        : ExceptionBase("No such type: " + type) {}
-
-        virtual JSONRPC::ErrorCode ec() const {
-            return JSONRPC::ErrorCode::INVALID_REQUEST;
-        }
-    };
-}
-
 namespace RPC {
     class Session;
     class SingleCall;

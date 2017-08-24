@@ -190,7 +190,9 @@ public:
     }
 
     void clear() {
-        // TODO
+        for (const auto &attrp : m_attrs)
+            m_delete.push_back(attrp.first);
+        m_attrs.clear();
     }
 
 private:

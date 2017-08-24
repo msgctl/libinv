@@ -160,6 +160,7 @@ public:
         for (const IndexKey &key : m_assoc)
             m_remove.insert(key);
         m_assoc.clear();
+        m_add.clear();
     }
 
 private:

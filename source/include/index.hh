@@ -51,6 +51,11 @@ public:
         Derived &index_impl = static_cast<Derived &>(*this);
         return db.impl().check(index_impl.path()) != -1;
     }
+
+    bool remove(Database &db) {
+        Derived &index_impl = static_cast<Derived &>(*this);
+        return db.impl().remove(index_impl.path()) != -1;
+    }
 };
 
 template<class Database, class Derived>

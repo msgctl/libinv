@@ -7,6 +7,8 @@ namespace inventory {
 
 namespace JSONRPC {
     enum class ErrorCode : int {
+        NO_SUCH_OBJECT = -32000,
+
         PARSE_ERROR = -32700,
         INVALID_REQUEST = -32600,
         METHOD_NOT_FOUND = -32601,
@@ -18,6 +20,9 @@ namespace JSONRPC {
 namespace exceptions {
     class ExceptionBase : public std::runtime_error {
     public:
+        ExceptionBase()
+        : std::runtime_error("") {}
+
         ExceptionBase(const std::string &str)
         : std::runtime_error(str) {}
 

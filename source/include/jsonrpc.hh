@@ -10,7 +10,7 @@
 #include <rapidjson/prettywriter.h>
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/join.hpp>
-#include "exception.hh"
+#include "exceptions.hh"
 
 namespace inventory {
 namespace JSONRPC {
@@ -18,57 +18,6 @@ extern const char *gc_version;
 
 namespace util {
     const char *error_message(ErrorCode e);
-}
-
-namespace exceptions {
-    class ExceptionBase : public inventory::exceptions::ExceptionBase {
-    public:
-        using inventory::exceptions::ExceptionBase::ExceptionBase;
-    };
-
-    class ParseError : public ExceptionBase {
-    public:
-        ParseError()
-        : ExceptionBase("JSONRPC: parse error.") {}
-
-        virtual ErrorCode ec() const {
-            return ErrorCode::PARSE_ERROR;
-        }
-    };
-
-    class InvalidRequest : public ExceptionBase {
-        static const char *errclass() {
-            return "Invalid JSONRPC request: ";
-        }
-
-    public:
-        InvalidRequest(const std::string description)
-        : ExceptionBase(errclass() + description) {}
-
-        InvalidRequest(const char *description)
-        : ExceptionBase(errclass() + std::string(description)) {}
-
-        virtual ErrorCode ec() const {
-            return ErrorCode::INVALID_REQUEST;
-        }
-    };
-
-    class InvalidResponse : public ExceptionBase {
-        static const char *errclass() {
-            return "Invalid JSONRPC response: ";
-        }
-
-    public:
-        InvalidResponse(const std::string description)
-        : ExceptionBase(errclass() + description) {}
-
-        InvalidResponse(const char *description)
-        : ExceptionBase(errclass() + std::string(description)) {}
-
-        virtual ErrorCode ec() const {
-            return ErrorCode::INTERNAL_ERROR;
-        }
-    };
 }
 
 class Namespace {
@@ -434,7 +383,7 @@ public:
         check_batch();
     }
 
-    SingleResponse(std::unique_ptr<Response> resp)
+    SingleResponse(std::unique_ptr<Response> response)
     : ResponseBase(std::move(*(response.release()))) {
         check_batch();
     }
@@ -460,6 +409,15 @@ public:
 
     void throw_ec() const {
         // TODO
+
+        switch (ec()) {
+        case JSONRPC::ErrorCode::NO_SUCH_OBJECT:
+            throw ::inventory::exceptions::NoSuchObject();
+        break;
+        default:
+            throw std::runtime_error("Unhandled exception: " __FILE__);
+        break;
+        }
     }
 
     const char *error_message() const {
