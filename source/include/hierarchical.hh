@@ -4,6 +4,8 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <mutex>
+#include <shared_mutex>
 #include <kcdb.h>
 #include <rapidjson/document.h>
 #include "key.hh"
@@ -13,6 +15,7 @@
 
 namespace inventory {
 
+extern std::shared_mutex g_hierarchical_rwlock;
 template<class Database, class Derived>
 class Hierarchical : public RPC::MethodRoster<Database,
                      Hierarchical<Database, Derived>> {
@@ -73,6 +76,7 @@ public:
     }
 
     void get(Database &db) {
+        std::shared_lock<std::shared_mutex> lock(g_hierarchical_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
         HierarchyUpKey upkey(derived.path());
@@ -95,6 +99,7 @@ public:
     }
 
     void commit(Database &db) {
+        std::unique_lock<std::shared_mutex> lock(g_hierarchical_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
         HierarchyUpKey upkey(derived.path());

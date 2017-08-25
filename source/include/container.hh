@@ -5,6 +5,8 @@
 #include <vector>
 #include <stdexcept>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <kcdb.h>
 #include <rapidjson/document.h>
 #include "key.hh"
@@ -52,6 +54,7 @@ protected:
     Container &m_container;
 };
 
+extern std::shared_mutex g_container_rwlock;
 template<class Database, class Derived>
 class Container : public RPC::MethodRoster<Database,
                      Container<Database, Derived>> {
@@ -65,6 +68,7 @@ public:
 
     // TODO rewrite commit and get for rapidjson obj
     void get(Database &db) {
+        std::shared_lock<std::shared_mutex> lock(g_container_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
         std::unique_ptr<kyotocabinet::DB::Cursor> cur(db.impl().cursor());
@@ -84,6 +88,7 @@ public:
     }
 
     void commit(Database &db) {
+        std::unique_lock<std::shared_mutex> lock(g_container_rwlock);
         Derived *derived = static_cast<Derived *>(this);
         std::string container_path = derived->path();
 

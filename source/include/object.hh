@@ -2,6 +2,8 @@
 #define LIBINV_OBJECT_HH
 #include <string>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include "index.hh"
 #include "database.hh"
 #include "index.hh"
@@ -42,6 +44,7 @@ public:
     void from_repr(const rapidjson::Value &object) {}
 };
 
+extern std::shared_mutex g_object_rwlock;
 template<class Database, template<class, class> class IndexType, class Derived,
                                         template<class, class> class ...Mixins>
 class Object : public IndexType<Database, Derived>,
@@ -152,6 +155,7 @@ public:
     }
 
     void get(Database &db) {
+        std::shared_lock<std::shared_mutex> lock(g_object_rwlock);
         Foreach<Mixins...>::get(*this, db);
     }
 
@@ -160,6 +164,7 @@ public:
     }
 
     void remove(Database &db) {
+        std::unique_lock<std::shared_mutex> lock(g_object_rwlock);
         clear();
         IndexType<Database, Derived>::remove(db);
     }
@@ -200,7 +205,7 @@ public:
     }
 
     void commit(Database &db) {
-        // TODO
+        std::shared_lock<std::shared_mutex> lock(g_object_rwlock);
         this->IndexType<Database, Derived>::commit(db);
         Foreach<Mixins...>::commit(*this, db);
     }
@@ -414,9 +419,7 @@ private:
     std::unique_ptr<JSONRPC::SingleRequest> build_create_request() {
         // TODO better
         auto jreq = std::make_unique<JSONRPC::SingleRequest>();
-
-        std::string req_id = self::id() + ":" + uuid_string();
-        jreq->id(req_id);
+        jreq->id(self::id() + ":" + uuid_string());
         jreq->method("object.repr.create");
         jreq->params(true);
 

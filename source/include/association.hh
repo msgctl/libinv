@@ -5,6 +5,8 @@
 #include <string>
 #include <stdexcept>
 #include <algorithm>
+#include <mutex>
+#include <shared_mutex>
 #include <rapidjson/document.h>
 #include "key.hh"
 #include "database.hh"
@@ -13,6 +15,7 @@
 
 namespace inventory {
 
+extern std::shared_mutex g_association_rwlock;
 template<class Database, class Derived>
 class Association : public RPC::MethodRoster<Database,
                      Association<Database, Derived>> {
@@ -69,6 +72,7 @@ public:
     }
 
     void get(Database &db) {
+        std::shared_lock<std::shared_mutex> lock(g_association_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
         std::unique_ptr<kyotocabinet::DB::Cursor> cur(db.impl().cursor());
@@ -86,6 +90,7 @@ public:
     }
 
     void commit(Database &db) {
+        std::unique_lock<std::shared_mutex> lock(g_association_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
         for (const IndexKey &p : m_add) {
