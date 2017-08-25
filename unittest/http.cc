@@ -109,6 +109,18 @@ TEST_F(HTTPTest, HTTPClient_async_complete_cb) {
     EXPECT_EQ(complete_cb, true);
 }
 
+TEST_F(HTTPTest, HTTPClient_exception_nosuchobject) {
+    using namespace std;
+    using namespace RPC;
+    using namespace ::inventory::exceptions;
+    std::shared_ptr<ClientSession> session = m_client->create_session();
+
+    Shared<Item<>> first;
+    try {
+        first->get(session, "0fe93648-8984-11e7-88c0-00173e539aaa");
+    } catch (const NoSuchObject &) {}
+} 
+
 int main(int argc, char **argv) {
     assert(argc > 1);
     g_argc = argc;

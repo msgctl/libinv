@@ -63,6 +63,9 @@ std::unique_ptr<JSONRPC::Response> HTTPClientSession::call(
     curl_easy_setopt(curl.ptr, CURLOPT_WRITEFUNCTION, _curl_write_cb);
     curl_easy_setopt(curl.ptr, CURLOPT_WRITEDATA, &reply_buffer);
     curl_easy_setopt(curl.ptr, CURLOPT_ERRORBUFFER, errbuf);
+    curl_easy_setopt(curl.ptr, CURLOPT_TCP_KEEPALIVE, 1);
+    curl_easy_setopt(curl.ptr, CURLOPT_TCP_KEEPIDLE, 600);
+    curl_easy_setopt(curl.ptr, CURLOPT_TCP_KEEPINTVL, 30);
 
     CURLcode result = curl_easy_perform(curl.ptr);
     if (result != CURLE_OK) {

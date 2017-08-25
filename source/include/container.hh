@@ -66,7 +66,6 @@ public:
     typedef std::map<std::string, std::string> AttrMap;
     typedef std::vector<std::string> IdVec;
 
-    // TODO rewrite commit and get for rapidjson obj
     void get(Database &db) {
         std::shared_lock<std::shared_mutex> lock(g_container_rwlock);
         Derived &derived = static_cast<Derived &>(*this);

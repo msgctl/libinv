@@ -23,7 +23,7 @@ namespace exceptions {
         ExceptionBase()
         : std::runtime_error("") {}
 
-        ExceptionBase(const std::string &str)
+        ExceptionBase(std::string str)
         : std::runtime_error(str) {}
 
         ExceptionBase(const char *str)

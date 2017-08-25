@@ -175,8 +175,19 @@ public:
 
 using StandardDataModel = Datamodel<Category, Sticker, Picture,
                                       Item, GTIN, ISBN, Owner>;
-
 }
+
+namespace stdtypes {
+    typedef types::Category<> Category;
+    typedef types::StickerPrefix StickerPrefix;
+    typedef types::Sticker<> Sticker;
+    typedef types::Picture<> Picture;
+    typedef types::Item<> Item;
+    typedef types::GTIN<> GTIN;
+    typedef types::ISBN<> ISBN;
+    typedef types::Owner<> Owner;
+}
+
 }
 
 #endif

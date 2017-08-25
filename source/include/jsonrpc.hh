@@ -412,7 +412,7 @@ public:
 
         switch (ec()) {
         case JSONRPC::ErrorCode::NO_SUCH_OBJECT:
-            throw ::inventory::exceptions::NoSuchObject();
+            throw ::inventory::exceptions::NoSuchObject(error_message());
         break;
         default:
             throw std::runtime_error("Unhandled exception: " __FILE__);
