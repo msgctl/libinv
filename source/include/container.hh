@@ -84,6 +84,8 @@ public:
                 m_attrs[ak] = value;
             } catch (std::out_of_range &oo) {}
         }
+
+        m_from_db = true;
     }
 
     void commit(Database &db) {
@@ -106,6 +108,8 @@ public:
                 throw std::runtime_error("Couldn't remove key");
         }
         m_delete.clear();
+
+        m_from_db = true;
     } 
 
     AttrMap &attributes() {
@@ -197,6 +201,20 @@ public:
         for (const auto &attrp : m_attrs)
             m_delete.push_back(attrp.first);
         m_attrs.clear();
+
+        //m_modified = true;
+    }
+
+    bool modified() const {
+        return true; // TODO compute the difference
+    }
+
+    bool from_db() const {
+        return m_from_db;
+    }
+
+    void set_from_db() {
+        m_from_db = true;
     }
 
 private:
@@ -225,6 +243,7 @@ private:
 
     AttrMap m_attrs;
     IdVec m_delete;
+    bool m_from_db = false;
 };
 
 }

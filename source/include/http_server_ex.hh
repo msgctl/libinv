@@ -11,7 +11,7 @@ namespace inventory::RPC::exceptions {
 
     class HTTPServerException : public HTTPServerExceptionBase {
         static const char *errclass() {
-            return "HTTP client exception: ";
+            return "HTTP server exception: ";
         }
 
     public:

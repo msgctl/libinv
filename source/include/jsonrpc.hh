@@ -287,6 +287,10 @@ public:
         }
     }
 
+    void push_back(SingleRequest &req) { // TODO zero-copy
+        m_jval->PushBack(req.value(), allocator());
+    }
+
     void clear() {
         m_jval->SetArray();
     }

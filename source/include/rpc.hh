@@ -12,6 +12,7 @@
 #include "workqueue.hh"
 #include "factory.hh"
 #include "rpc_ex.hh"
+#include "auth.hh"
 
 namespace inventory {
 namespace RPC {
@@ -30,6 +31,7 @@ public:
            const JSONRPC::RequestBase &request) = 0;
     virtual void call_async(std::unique_ptr<JSONRPC::RequestBase> request,
                                             ResponseHandler response) = 0;
+    virtual void upload_file(std::string id, std::string path) = 0;
 
     virtual void terminate();
 
@@ -41,18 +43,23 @@ protected:
 };
 
 class Server;
-class ServerSession {
+class ServerSession : public std::enable_shared_from_this<ServerSession> {
 public:
     // called by RPC::Request instances
     virtual void reply_async(std::unique_ptr<JSONRPC::ResponseBase>
                                                      response) = 0;
     virtual void terminate();
 
+    User &user() const {
+        return *mp_user;
+    }
+
 protected:
     ServerSession(Server *server)
     : m_server(server) {}
 
     Server *m_server;
+    std::unique_ptr<User> mp_user;
 };
 
 class ClientRequest;

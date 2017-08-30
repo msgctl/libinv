@@ -42,6 +42,16 @@ public:
     }
 
     void from_repr(const rapidjson::Value &object) {}
+
+    bool modified() const {
+        return false;
+    }
+
+    bool from_db() const {
+        return false;
+    }
+
+    void set_from_db() {}
 };
 
 extern std::shared_mutex g_object_rwlock;
@@ -137,6 +147,30 @@ class Object : public IndexType<Database, Derived>,
             if (sizeof...(Mixins_))
                 Foreach<Mixins_...>::clear(object);
         }
+
+        static bool modified(self &object) {
+            if (object.T_<Database, Derived>::modified())
+                return true;
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::modified(object);
+            return false;
+        }
+
+        static bool from_db(self &object) {
+            if (object.T_<Database, Derived>::from_db())
+                return true;
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::from_db(object);
+            return false;
+        }
+
+        static void set_from_db(self &object) {
+            object.T_<Database, Derived>::set_from_db();
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::set_from_db(object);
+        }
+
+        // TODO commit if modified, single call vector, call coalescing
     };
 
 public:
@@ -148,6 +182,10 @@ public:
     : IndexType<Database, Derived>(db) {}
 
     virtual ~Object() {}
+
+    bool exists(Database &db) {
+        return this->IndexType<Database, Derived>::exists(db);
+    }
 
     void get(Database &db, std::string id) {
         this->IndexType<Database, Derived>::get(db, id);
@@ -191,8 +229,8 @@ public:
                 const SingleResponse sresp(std::move(response));
                 if (sresp.has_error())
                     sresp.throw_ec();
-                else
-                    from_repr(sresp.result());
+                from_repr(sresp.result());
+                Foreach<Mixins...>::set_from_db(*this);
             }
         );
         return Factory<ClientRequest>::create(std::move(jgetreq), session,
@@ -217,9 +255,21 @@ public:
 
     std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
                                                                               session) {
+        using namespace RPC;
+        using namespace JSONRPC;
+
         // TODO foreach commit w/ session, coalesce requests
         std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
-        return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session);
+        auto handler = wrap_refcount_check(
+            [this](std::unique_ptr<Response> response) -> void {
+                const SingleResponse sresp(std::move(response));
+                if (sresp.has_error())
+                    sresp.throw_ec();
+                Foreach<Mixins...>::set_from_db(*this);
+            }
+        );
+        return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session,
+                                                                      handler);
     }
 
     static std::vector<std::string> rpc_methods() {
@@ -251,7 +301,7 @@ public:
             this->IndexType<Database, Derived>::get(db,
                      RPC::ObjectCallParams(call).id());
             
-            if (!this->IndexType<Database, Derived>::exists(db)) {
+            if (!exists(db)) {
                 throw exceptions::NoSuchObject(
                     this->IndexType<Database, Derived>::type(),
                     this->IndexType<Database, Derived>::id()
@@ -349,6 +399,14 @@ public:
 
     std::string virtual_type() const {
         return Derived::type();
+    }
+
+    bool modified() const {
+        return Foreach<Mixins...>::modified(*this);
+    }
+
+    bool from_db() const {
+        return Foreach<Mixins...>::from_db(*this);
     }
 
     static const std::vector<RPC::Method<Database, Derived>> &methods() {

@@ -50,6 +50,7 @@ public:
         m_remove.erase(key);
         // TODO check
         m_assoc.insert(key);
+        m_modified = true;
     }
 
     template<class AssocObject>
@@ -69,6 +70,7 @@ public:
         m_remove.insert(key);
         m_add.erase(key);
         m_assoc.erase(key);
+        m_modified = true;
     }
 
     void get(Database &db) {
@@ -87,6 +89,8 @@ public:
 
             m_assoc.insert(lkey.remote_part());
         }
+
+        m_from_db = true;
     }
 
     void commit(Database &db) {
@@ -110,6 +114,9 @@ public:
                 throw std::runtime_error("Couldn't remove keys");
         }
         m_remove.clear();
+
+        m_from_db = true;
+        m_modified = false;
     }
 
     template<class AssocObject>
@@ -166,6 +173,20 @@ public:
             m_remove.insert(key);
         m_assoc.clear();
         m_add.clear();
+
+        m_modified = true;
+    }
+
+    bool modified() const {
+        return m_modified;
+    }
+
+    bool from_db() const {
+        return m_from_db;
+    }
+
+    void set_from_db() {
+        m_from_db = true;
     }
 
 private:
@@ -195,6 +216,8 @@ private:
     std::set<IndexKey> m_assoc;
     std::set<IndexKey> m_add;
     std::set<IndexKey> m_remove;
+    bool m_modified = false;
+    bool m_from_db = false;
 };
 
 }

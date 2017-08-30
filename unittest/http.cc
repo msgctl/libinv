@@ -28,12 +28,12 @@ public:
     virtual void SetUp() {
         m_swq = std::make_shared<Workqueue<ServerRequest>>(4);
         m_cwq = std::make_shared<Workqueue<JSONRPC::RequestBase>>(2);
-        m_client = std::make_unique<HTTPClient>("http://localhost:8080", m_cwq);
+        m_client = std::make_unique<HTTPClient>("https://localhost:8080", m_cwq, false);
         m_server = std::make_unique<HTTPServer>(8080, m_swq, 
             [this](ServerRequest &request) -> void {
                 request.complete<Database<>, StandardDataModel>(m_db);
-                std::cout << "completed" << std::endl;
-            }
+                //std::cout << "completed" << std::endl;
+            }, "ca.key", "ca.crt"
         );
     }
 
@@ -62,6 +62,22 @@ TEST_F(HTTPTest, HTTPClient_complete_sync) {
     Shared<Item<>> second;
     second->get(session, first->id());
     EXPECT_EQ(first->repr_string(), second->repr_string());
+} 
+
+TEST_F(HTTPTest, HTTPClient_curl_keepalive) {
+    using namespace std;
+    using namespace RPC;
+    std::shared_ptr<ClientSession> session = m_client->create_session();
+
+    for (int i = 0; i < 50; i++) {
+        Shared<Item<>> first;
+        first["testattr"] = "test";
+        first->commit(session);
+
+        Shared<Item<>> second;
+        second->get(session, first->id());
+        EXPECT_EQ(first->repr_string(), second->repr_string());
+    }
 } 
 
 TEST_F(HTTPTest, HTTPClient_complete_async) {

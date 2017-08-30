@@ -2,9 +2,9 @@
 INC = -Ibuild -Isource/include -Igoogletest/googletest/include \
     -Irapidjson/include $(shell kcutilmgr conf -i)
 LIB = -Lbuild -Lgoogletest/googletest $(shell kcutilmgr conf -l) -luuid \
-    -lcurl -lmicrohttpd
+    -lcurl -lmicrohttpd -lgnutls
 UNITTESTLIBS = -lpthread -lgtest_main -lgtest -luuid
-SOLIBS = $(shell kcutilmgr conf -l) -lpthread
+SOLIBS = $(shell kcutilmgr conf -l) -lpthread -lgnutls
 
 CXXSOURCE = $(wildcard source/*.cc)
 CSOURCE = $(wildcard source/*.c)
@@ -19,7 +19,7 @@ UNITTEST_CXXSOURCE = $(wildcard unittest/*.cc)
 UNITTEST_CXXOBJ = $(UNITTEST_CXXSOURCE:unittest/%.cc=build/unittest/%.o)
 UNITTEST_TARGETS = $(UNITTEST_CXXOBJ:%.o=%)
 UNITTEST_LOGS = $(UNITTEST_TARGETS:%=%.xml)
-PRECOMPILED_HEADERS = $(HEADERS:source/include/%.hh=build/%.hh.gch)
+#PRECOMPILED_HEADERS = $(HEADERS:source/include/%.hh=build/%.hh.gch)
 TESTDBS = $(UNITTEST_TARGETS:build/unittest/%=build/unittest/%.kct)
 
 LIBTARGETS = build/libinvdb.so
@@ -42,7 +42,7 @@ CC  := gcc
 CXX := g++
 LD  := g++
 DBMGR := kctreemgr
-CXXFLAGS := -std=c++17 -fPIC -g -O3
+CXXFLAGS := -std=c++17 -fPIC -O0
 SOFLAGS  := -shared
 
 .PHONY: all depend clean mrproper googletest submodules test \
@@ -101,7 +101,7 @@ directories:
 
 test: $(TESTDBS) $(UNITTEST_LOGS)
 
-build/unittest/%.xml: build/unittest/% build/unittest/%.kct
+build/unittest/%.xml: build/unittest/% build/unittest/%.kct $(DEPEND)
 	$(DBMGR) clear $(word 2, $^)
 	LD_LIBRARY_PATH=$(UNITTEST_LD_LIBRARY_PATH) gdb -x unittest/gdbscript \
                                            --args $^  --gtest_output=xml:$@
@@ -109,26 +109,29 @@ build/unittest/%.xml: build/unittest/% build/unittest/%.kct
 build/%.cc.d: source/%.cc
 	$(CXX) -MM $< -o $@ $(INC) $(CXXFLAGS)
 
-build/%.o: source/%.cc build/%.cc.d $(PRECOMPILED_HEADERS)
+build/%.o: source/%.cc build/%.cc.d $(PRECOMPILED_HEADERS) $(DEPEND)
 	$(CXX) -c $< -o $@ $(INC) $(CXXFLAGS)
 
-build/%.so: $(OBJ)
+build/%.so: $(OBJ) $(DEPEND)
 	$(LD) $(SOFLAGS) $(OBJ) $(SOLIBS) -o $@
 
 build/unittest/%.cc.d: unittest/%.cc
 	$(CXX) -MM $< -o $@ $(INC) $(CXXFLAGS)
 
-build/unittest/%.o: unittest/%.cc build/unittest/*.cc.d $(PRECOMPILED_HEADERS)
+build/unittest/%.o: unittest/%.cc build/unittest/*.cc.d $(PRECOMPILED_HEADERS) $(DEPEND)
 	$(CXX) $(INC) -c $(CXXFLAGS) $< -o $@
 
-build/unittest/%: build/unittest/%.o $(LIBTARGETS)
+build/unittest/%: build/unittest/%.o $(LIBTARGETS) $(DEPEND)
 	$(LD) $(LIB) $< $(LIBTARGETS:build/lib%.so=-l%) \
         $(UNITTESTLIBS) -o $@
+
+build/unittest/%key.pem:
+	openssl genrsa -out $@ 2048
 
 build/%.hh.d: source/include/%.hh
 	$(CXX) -fpch-deps $(INC) -MM $(CXXFLAGS) $< -o $@
 
-build/%.hh.gch: source/include/%.hh build/%.hh.d
+build/%.hh.gch: source/include/%.hh $(DEPEND)
 	$(CXX) $(INC) -c $(CXXFLAGS) $< -o $@
 
 include $(wildcard build/*.d)
