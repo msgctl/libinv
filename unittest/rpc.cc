@@ -6,6 +6,7 @@
 #include "stdtypes.hh"
 #include "rpc.hh"
 #include "jsonrpc.hh"
+#include "shared_wrapper.hh"
 
 using namespace std;
 using namespace inventory;
@@ -152,6 +153,46 @@ TEST_F(RPCTest, RPC_repr_get) {
     std::unique_ptr<JSONRPC::Request> jreq(new JSONRPC::Request(reqstr)); 
     RPC::ServerRequest req(std::move(jreq), m_session);
     req.complete<Database<>, StandardDataModel>(m_db);
+}
+
+class DummySession : public RPC::ClientSession {
+public:
+    DummySession()
+    : ClientSession(nullptr) {}
+
+    virtual void notify(const JSONRPC::RequestBase &request) {}
+    virtual void notify_async(std::unique_ptr<JSONRPC::RequestBase>
+                                                       request) {};
+
+    virtual std::unique_ptr<JSONRPC::Response> call(
+            const JSONRPC::RequestBase &request) {};
+    virtual void call_async(std::unique_ptr<JSONRPC::RequestBase> request,
+                                             ResponseHandler response) {};
+    virtual void upload_file(std::string id, std::string path) {};
+
+    virtual void terminate() {};
+};
+
+TEST_F(RPCTest, RPC_commit_reqs) {
+    Shared<Item<>> one;
+    one["test"] = "test";
+
+    // first commit
+    auto client_session = std::make_shared<DummySession>();
+    std::shared_ptr<RPC::ClientRequest> commit_req =
+                   one->commit_async(client_session);
+    // should be a *create* request
+    std::cout << commit_req->string() << std::endl;
+
+    // simulate remote commit (sets m_from_db)
+    one->commit(m_db);
+
+    // modify
+    one["abc"] = "bca";
+    std::shared_ptr<RPC::ClientRequest> update_req =
+                   one->commit_async(client_session);
+    // should be an *update* request
+    std::cout << update_req->string() << std::endl;
 }
 
 int main(int argc, char **argv) {

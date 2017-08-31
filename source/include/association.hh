@@ -5,6 +5,7 @@
 #include <string>
 #include <stdexcept>
 #include <algorithm>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <rapidjson/document.h>
@@ -12,6 +13,8 @@
 #include "database.hh"
 #include "rpc.hh"
 #include "exception.hh"
+#include "jsonrpc.hh"
+#include "uuid.hh"
 
 namespace inventory {
 
@@ -48,7 +51,6 @@ public:
     void associate(const IndexKey &key) {
         m_add.insert(key);
         m_remove.erase(key);
-        // TODO check
         m_assoc.insert(key);
         m_modified = true;
     }
@@ -97,15 +99,6 @@ public:
         std::unique_lock<std::shared_mutex> lock(g_association_rwlock);
         Derived &derived = static_cast<Derived &>(*this);
 
-        for (const IndexKey &p : m_add) {
-            LinkKey link({derived.path(), p.string()});
-            if (!db.impl().set(link, ""))
-                throw std::runtime_error("Couldn't set kv");
-            if (!db.impl().set(link.inverted(), ""))
-                throw std::runtime_error("Couldn't set kv");
-        }
-        m_add.clear();
-
         for (const IndexKey &p : m_remove) {
             LinkKey link({derived.path(), p.string()});
             if (!db.impl().remove(link))
@@ -115,8 +108,49 @@ public:
         }
         m_remove.clear();
 
+        for (const IndexKey &p : m_add) {
+            LinkKey link({derived.path(), p.string()});
+            if (!db.impl().set(link, ""))
+                throw std::runtime_error("Couldn't set kv");
+            if (!db.impl().set(link.inverted(), ""))
+                throw std::runtime_error("Couldn't set kv");
+        }
+        m_add.clear();
+
         m_from_db = true;
         m_modified = false;
+    }
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_update_request(
+                     rapidjson::Document::AllocatorType &alloc) {
+        if (!modified())
+            return nullptr;
+
+        Derived &derived = static_cast<Derived &>(*this);        
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
+        jreq->id(derived.id() + ":" + uuid_string());
+        jreq->method("link.update");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jadd(kArrayType);
+        for (const IndexKey &key : m_add) {
+            Value jkey;
+            // TODO zerocopy
+            jkey.SetString(key.string().c_str(), jreq->allocator());
+            jadd.PushBack(jkey, jreq->allocator());
+        }
+        jreq->params().AddMember("add", jadd, jreq->allocator());
+
+        Value jremove(kArrayType);
+        for (const IndexKey &key : m_remove) {
+            Value jkey;
+            jkey.SetString(key.string().c_str(), jreq->allocator());
+            jremove.PushBack(jkey, jreq->allocator());
+        }
+        jreq->params().AddMember("remove", jremove, jreq->allocator());
+
+        return jreq;
     }
 
     template<class AssocObject>
@@ -143,8 +177,21 @@ public:
 
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> ret({
+            RPC::Method<Database, self>("link.update", &self::rpc_update),
         });
         return ret;
+    }
+
+    rapidjson::Value rpc_update(Database &db, const RPC::SingleCall &call,
+                              rapidjson::Document::AllocatorType &alloc) {
+        assoc_remove_batch(RPC::ObjectCallParams(call)["remove"]);
+        assoc_set_batch(RPC::ObjectCallParams(call)["add"]);
+        commit(db);
+
+        // TODO better
+        if (call.jsonrpc()->is_notification())
+            return rapidjson::Value(rapidjson::kNullType);
+        return rapidjson::Value("OK");
     }
 
     static const std::string &mixin_type() {
@@ -165,6 +212,7 @@ public:
     }
 
     void from_repr(const rapidjson::Value &array) {
+        clear();
         assoc_set_batch(array);
     }
 
@@ -185,8 +233,12 @@ public:
         return m_from_db;
     }
 
-    void set_from_db() {
-        m_from_db = true;
+    void set_from_db(bool state) {
+        m_from_db = state;
+    }
+
+    void set_modified(bool state) {
+        m_modified = state;
     }
 
 private:
@@ -196,11 +248,24 @@ private:
         associate(IndexKey(object.GetString()));
     }
 
+    void assoc_remove_single(const rapidjson::Value &object) {
+        if (!object.IsString())
+            throw exceptions::InvalidRepr("array member is not a string");
+        disassociate(IndexKey(object.GetString()));
+    }
+
     void assoc_set_batch(const rapidjson::Value &array) {
         if (!array.IsArray())
             throw exceptions::InvalidRepr("value is not an array");
         for (auto &v : array.GetArray())
             assoc_set_single(v);
+    }
+
+    void assoc_remove_batch(const rapidjson::Value &array) {
+        if (!array.IsArray())
+            throw exceptions::InvalidRepr("value is not an array");
+        for (auto &v : array.GetArray())
+            assoc_remove_single(v);
     }
 
     void repr(rapidjson::Value &rarr, rapidjson::Document::AllocatorType

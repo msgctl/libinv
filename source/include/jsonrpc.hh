@@ -287,8 +287,8 @@ public:
         }
     }
 
-    void push_back(SingleRequest &req) { // TODO zero-copy
-        m_jval->PushBack(req.value(), allocator());
+    void push_back(std::unique_ptr<SingleRequest> req) { // TODO zero-copy
+        m_jval->PushBack(req->value().Move(), allocator());
     }
 
     void clear() {

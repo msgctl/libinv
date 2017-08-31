@@ -13,6 +13,8 @@
 #include "database.hh"
 #include "rpc.hh"
 #include "exception.hh"
+#include "jsonrpc.hh"
+#include "uuid.hh"
 
 namespace inventory {
 
@@ -93,14 +95,6 @@ public:
         Derived *derived = static_cast<Derived *>(this);
         std::string container_path = derived->path();
 
-        for (auto &kv : m_attrs) {
-            std::string attribute_path = Attribute<self>::db_key(container_path,
-                                                                      kv.first);
-            if (!db.impl().set(attribute_path, kv.second))
-                throw std::runtime_error("Couldn't set kv (" + attribute_path
-                      + "," + kv.second + ")" + db.impl().error().message());
-        }
-
         for (std::string &id : m_delete) {
             std::string attribute_path = Attribute<self>::db_key(container_path,
                                                                             id);
@@ -109,8 +103,33 @@ public:
         }
         m_delete.clear();
 
+        for (auto &kv : m_attrs) {
+            std::string attribute_path = Attribute<self>::db_key(container_path,
+                                                                      kv.first);
+            if (!db.impl().set(attribute_path, kv.second))
+                throw std::runtime_error("Couldn't set kv (" + attribute_path
+                      + "," + kv.second + ")" + db.impl().error().message());
+        }
+
         m_from_db = true;
     } 
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_update_request(
+                     rapidjson::Document::AllocatorType &alloc) {
+        if (!modified())
+            return nullptr;
+
+        Derived &derived = static_cast<Derived &>(*this);        
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
+        jreq->id(derived.id() + ":" + uuid_string());
+        jreq->method("attribute.repr.set");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jrepr = repr(jreq->allocator());
+        jreq->params().AddMember("repr", jrepr, jreq->allocator());
+        return jreq;
+    }
 
     AttrMap &attributes() {
         return m_attrs;
@@ -167,6 +186,7 @@ public:
             RPC::Method<Database, self>("attribute.get", &self::rpc_attribute_get),
             RPC::Method<Database, self>("attribute.set", &self::rpc_attribute_set),
             RPC::Method<Database, self>("attribute.repr.get", &self::rpc_repr_get),
+            RPC::Method<Database, self>("attribute.repr.set", &self::rpc_repr_set),
         });
         return ret;
     }
@@ -179,6 +199,17 @@ public:
     rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
                                 rapidjson::Document::AllocatorType &alloc) {
         return repr(alloc);
+    }
+
+    rapidjson::Value rpc_repr_set(Database &db, const RPC::SingleCall &call,
+                                rapidjson::Document::AllocatorType &alloc) {
+        from_repr(RPC::ObjectCallParams(call)["repr"]);
+        commit(db);
+
+        // TODO better
+        if (call.jsonrpc()->is_notification())
+            return rapidjson::Value(rapidjson::kNullType);
+        return rapidjson::Value("OK");
     }
 
     rapidjson::Value repr(rapidjson::Document::AllocatorType &alloc) const {
@@ -194,6 +225,7 @@ public:
     }
 
     void from_repr(const rapidjson::Value &object) {
+        clear();
         attribute_set_batch(object);
     }
 
@@ -213,8 +245,11 @@ public:
         return m_from_db;
     }
 
-    void set_from_db() {
-        m_from_db = true;
+    void set_from_db(bool state) {
+        m_from_db = state;
+    }
+
+    void set_modified(bool state) {
     }
 
 private:

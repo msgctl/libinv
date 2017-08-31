@@ -23,6 +23,8 @@ public:
     typedef std::function<void(std::unique_ptr<JSONRPC::Response>)>
                                                    ResponseHandler;
 
+    virtual ~ClientSession() {}
+
     virtual void notify(const JSONRPC::RequestBase &request) = 0;
     virtual void notify_async(std::unique_ptr<JSONRPC::RequestBase>
                                                       request) = 0;

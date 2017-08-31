@@ -12,6 +12,7 @@
 #include "database.hh"
 #include "rpc.hh"
 #include "exception.hh"
+#include "uuid.hh"
 
 namespace inventory {
 
@@ -143,6 +144,49 @@ public:
         m_from_db = true;
     }
 
+    std::unique_ptr<JSONRPC::SingleRequest> build_update_request(
+                     rapidjson::Document::AllocatorType &alloc) {
+        if (!modified())
+            return nullptr;
+
+        Derived &derived = static_cast<Derived &>(*this);        
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
+        jreq->id(derived.id() + ":" + uuid_string());
+        jreq->method("hierarchical.update");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jadd(kArrayType);
+        for (const IndexKey &key : m_add_down_ids) {
+            Value jkey;
+            jkey.SetString(key.string().c_str(), jreq->allocator());
+            jadd.PushBack(jkey, jreq->allocator());
+        }
+        jreq->params().AddMember("add_down_ids", jadd, jreq->allocator());
+
+        Value jremove(kArrayType);
+        for (const IndexKey &key : m_remove_down_ids) {
+            Value jkey;
+            jkey.SetString(key.string().c_str(), jreq->allocator());
+            jremove.PushBack(jkey, jreq->allocator());
+        }
+        jreq->params().AddMember("remove_down_ids", jremove, jreq->allocator());
+
+        Value jremove_dkeys(kArrayType);
+        for (const HierarchyDownKey &key : m_remove_dkeys) {
+            Value jkey;
+            jkey.SetString(key.string().c_str(), jreq->allocator());
+            jremove_dkeys.PushBack(jkey, jreq->allocator());
+        }
+        jreq->params().AddMember("remove_down_keys", jremove_dkeys, jreq->allocator());
+
+        Value jup_id;
+        jup_id.SetString(m_up_id.string().c_str(), jreq->allocator());
+        jreq->params().AddMember("up_id", jup_id, jreq->allocator());
+
+        return jreq;
+    }
+
     void set_up_id(const IndexKey &key) {
         m_up_id = key;
         m_modified = true;
@@ -186,8 +230,23 @@ public:
 
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> ret({
+            RPC::Method<Database, self>("hierarchical.update", &self::rpc_update),
         });
         return ret;
+    }
+
+    rapidjson::Value rpc_update(Database &db, const RPC::SingleCall &call,
+                              rapidjson::Document::AllocatorType &alloc) {
+        set_up_id(RPC::ObjectCallParams(call)["up_id"]);
+        remove_down_ids(RPC::ObjectCallParams(call)["remove_down_ids"]);
+        remove_down_keys(RPC::ObjectCallParams(call)["remove_down_keys"]);
+        set_down_ids(RPC::ObjectCallParams(call)["add_down_ids"]);
+        commit(db);
+
+        // TODO better
+        if (call.jsonrpc()->is_notification())
+            return rapidjson::Value(rapidjson::kNullType);
+        return rapidjson::Value("OK");
     }
 
     static const std::string &mixin_type() {
@@ -199,27 +258,17 @@ public:
         if (!object.IsObject())
             throw exceptions::InvalidRepr("repr is not a json object");
 
+        clear();
+
         rapidjson::Value::ConstMemberIterator jup_id =
                            object.FindMember("up_id");
-        if (jup_id != object.MemberEnd()) {
-            if (!jup_id->value.IsString())
-                throw exceptions::InvalidRepr("up_id is not a string");
-            m_up_id.from_string(jup_id->value.GetString());
-        }
+        if (jup_id != object.MemberEnd())
+            set_up_id(jup_id->value);
 
         rapidjson::Value::ConstMemberIterator jdown_ids =
                            object.FindMember("down_ids");
-        if (jdown_ids != object.MemberEnd()) {
-            if (!jdown_ids->value.IsArray())
-                throw exceptions::InvalidRepr("down_ids is not an array");
-            for (auto &v : jdown_ids->value.GetArray()) {
-                if (!v.IsString()) {
-                    throw exceptions::InvalidRepr("down_ids member is not a "
-                                                                   "string");
-                }
-                *this += IndexKey(v.GetString());
-            }
-        }
+        if (jdown_ids != object.MemberEnd())
+            set_down_ids(jdown_ids->value);
     }
 
     rapidjson::Value repr(rapidjson::Document::AllocatorType &alloc) const {
@@ -248,8 +297,12 @@ public:
         return m_from_db;
     }
 
-    void set_from_db() {
-        m_from_db = true;
+    void set_from_db(bool state) {
+        m_from_db = state;
+    }
+
+    void set_modified(bool state) {
+        m_modified = state;
     }
 
 private:
@@ -272,6 +325,51 @@ private:
             }
             robj.AddMember("down_ids", jdown_ids, alloc);
         }
+    }
+
+    void set_down_ids(const rapidjson::Value &jdown_ids) {
+        if (!jdown_ids.IsArray())
+            throw exceptions::InvalidRepr("down_ids is not an array");
+        for (auto &v : jdown_ids.GetArray()) {
+            if (!v.IsString()) {
+                throw exceptions::InvalidRepr("down_ids member is not a "
+                                                               "string");
+            }
+            *this += IndexKey(v.GetString());
+        }
+    }
+
+    void remove_down_ids(const rapidjson::Value &jdown_ids) {
+        if (!jdown_ids.IsArray())
+            throw exceptions::InvalidRepr("down_ids is not an array");
+        for (auto &v : jdown_ids.GetArray()) {
+            if (!v.IsString()) {
+                throw exceptions::InvalidRepr("down_ids member is not a "
+                                                               "string");
+            }
+            *this -= IndexKey(v.GetString());
+        }
+    }
+
+    void remove_down_keys(const rapidjson::Value &jdown_keys) {
+        if (!jdown_keys.IsArray())
+            throw exceptions::InvalidRepr("down_keys is not an array");
+        for (auto &v : jdown_keys.GetArray()) {
+            if (!v.IsString()) {
+                throw exceptions::InvalidRepr("down_keys member is not a "
+                                                               "string");
+            }
+
+            std::string keystr = v.GetString();
+            HierarchyDownKey dkey(keystr);
+            m_remove_dkeys.insert(dkey);
+        }
+    }
+
+    void set_up_id(const rapidjson::Value &jup_id) {
+        if (!jup_id.IsString())
+            throw exceptions::InvalidRepr("up_id is not a string");
+        m_up_id.from_string(jup_id.GetString());
     }
 
     IndexKey m_up_id;

@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <functional>
 #include "index.hh"
 #include "database.hh"
 #include "index.hh"
@@ -25,6 +26,11 @@ public:
     void get(Database &db) {}
     void commit(Database &db) {}
     void clear() {}
+
+    std::unique_ptr<JSONRPC::SingleRequest> build_update_request(
+                          rapidjson::Document::AllocatorType &) {
+        return nullptr;
+    }
 
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> methods({
@@ -51,7 +57,8 @@ public:
         return false;
     }
 
-    void set_from_db() {}
+    void set_from_db(bool state) {}
+    void set_modified(bool state) {}
 };
 
 extern std::shared_mutex g_object_rwlock;
@@ -64,8 +71,11 @@ class Object : public IndexType<Database, Derived>,
                private RPC::MethodRoster<Database, Derived>,
                public std::enable_shared_from_this<Object<Database,
                                   IndexType, Derived, Mixins...>> {
-    typedef Object<Database, IndexType, Derived, Mixins...> self;
     friend class RPC::MethodRoster<Database, Derived>;
+    typedef Object<Database, IndexType, Derived, Mixins...> self;
+
+    typedef std::function<void(std::unique_ptr<JSONRPC::SingleRequest>)>
+                                                       RequestCombineCb;
 
     template<
         template<class, class> class T_ = NullMixin,
@@ -148,7 +158,7 @@ class Object : public IndexType<Database, Derived>,
                 Foreach<Mixins_...>::clear(object);
         }
 
-        static bool modified(self &object) {
+        static bool modified(const self &object) {
             if (object.T_<Database, Derived>::modified())
                 return true;
             if (sizeof...(Mixins_))
@@ -156,7 +166,16 @@ class Object : public IndexType<Database, Derived>,
             return false;
         }
 
-        static bool from_db(self &object) {
+        // TODO modification hash
+        // TODO send requests with hash?
+        // TODO redo requests if hash different?
+        static void set_modified(self &object, bool state) {
+            object.T_<Database, Derived>::set_modified(state);
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::set_modified(object, state);
+        }
+
+        static bool from_db(const self &object) {
             if (object.T_<Database, Derived>::from_db())
                 return true;
             if (sizeof...(Mixins_))
@@ -164,13 +183,19 @@ class Object : public IndexType<Database, Derived>,
             return false;
         }
 
-        static void set_from_db(self &object) {
-            object.T_<Database, Derived>::set_from_db();
+        static void set_from_db(self &object, bool state) {
+            object.T_<Database, Derived>::set_from_db(state);
             if (sizeof...(Mixins_))
-                Foreach<Mixins_...>::set_from_db(object);
+                Foreach<Mixins_...>::set_from_db(object, state);
         }
 
-        // TODO commit if modified, single call vector, call coalescing
+        static void build_update_request(self &object,
+            rapidjson::Document::AllocatorType &alloc,
+                                RequestCombineCb cb) {
+            cb(object.T_<Database, Derived>::build_update_request(alloc));
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::build_update_request(object, alloc, cb);
+        }
     };
 
 public:
@@ -230,7 +255,7 @@ public:
                 if (sresp.has_error())
                     sresp.throw_ec();
                 from_repr(sresp.result());
-                Foreach<Mixins...>::set_from_db(*this);
+                Foreach<Mixins...>::set_from_db(*this, true);
             }
         );
         return Factory<ClientRequest>::create(std::move(jgetreq), session,
@@ -258,18 +283,32 @@ public:
         using namespace RPC;
         using namespace JSONRPC;
 
-        // TODO foreach commit w/ session, coalesce requests
-        std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
-        auto handler = wrap_refcount_check(
-            [this](std::unique_ptr<Response> response) -> void {
-                const SingleResponse sresp(std::move(response));
-                if (sresp.has_error())
-                    sresp.throw_ec();
-                Foreach<Mixins...>::set_from_db(*this);
-            }
-        );
-        return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session,
-                                                                      handler);
+        if (from_db()) {
+            std::unique_ptr<JSONRPC::BatchRequest> jupdatereq =
+                                        build_update_request();
+            auto handler = wrap_refcount_check(
+                [this](std::unique_ptr<Response> response) -> void {
+                    // TODO iterate, throw errors
+                    Foreach<Mixins...>::set_from_db(*this, true);
+                    Foreach<Mixins...>::set_modified(*this, false);
+                }
+            );
+            return Factory<RPC::ClientRequest>::create(std::move(jupdatereq),
+                                                           session, handler);
+        } else {
+            std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
+            auto handler = wrap_refcount_check(
+                [this](std::unique_ptr<Response> response) -> void {
+                    const SingleResponse sresp(std::move(response));
+                    if (sresp.has_error())
+                        sresp.throw_ec();
+                    Foreach<Mixins...>::set_from_db(*this, true);
+                    Foreach<Mixins...>::set_modified(*this, false);
+                }
+            );
+            return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session,
+                                                                          handler);
+        }
     }
 
     static std::vector<std::string> rpc_methods() {
@@ -490,6 +529,17 @@ private:
         jreq->params().AddMember("repr", jrepr, jreq->allocator());
 
         return jreq;
+    }
+
+    std::unique_ptr<JSONRPC::BatchRequest> build_update_request() {
+        auto jbreq = std::make_unique<JSONRPC::BatchRequest>();
+        Foreach<Mixins...>::build_update_request(*this, jbreq->allocator(),
+            [&](std::unique_ptr<JSONRPC::SingleRequest> jreq) -> void {
+                if (jreq)
+                    jbreq->push_back(std::move(jreq));
+            }
+        );
+        return jbreq;
     }
 
     std::unique_ptr<JSONRPC::SingleRequest> build_clear_request() {

@@ -54,6 +54,10 @@ TEST_F(DatamodelTest, repr_test) {
     std::cout << first->repr_string() << std::endl;
     std::cout << second->repr_string() << std::endl;
     EXPECT_EQ(first->repr_string(), second->repr_string());
+
+    first->commit(m_db);
+    contents->commit(m_db);
+    up->commit(m_db);
 }
 
 int main(int argc, char **argv) {
