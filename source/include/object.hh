@@ -53,11 +53,11 @@ public:
         return false;
     }
 
-    bool from_db() const {
+    bool db_backed() const {
         return false;
     }
 
-    void set_from_db(bool state) {}
+    void set_db_backed(bool state) {}
     void set_modified(bool state) {}
 };
 
@@ -175,18 +175,18 @@ class Object : public IndexType<Database, Derived>,
                 Foreach<Mixins_...>::set_modified(object, state);
         }
 
-        static bool from_db(const self &object) {
-            if (object.T_<Database, Derived>::from_db())
+        static bool db_backed(const self &object) {
+            if (object.T_<Database, Derived>::db_backed())
                 return true;
             if (sizeof...(Mixins_))
-                Foreach<Mixins_...>::from_db(object);
+                Foreach<Mixins_...>::db_backed(object);
             return false;
         }
 
-        static void set_from_db(self &object, bool state) {
-            object.T_<Database, Derived>::set_from_db(state);
+        static void set_db_backed(self &object, bool state) {
+            object.T_<Database, Derived>::set_db_backed(state);
             if (sizeof...(Mixins_))
-                Foreach<Mixins_...>::set_from_db(object, state);
+                Foreach<Mixins_...>::set_db_backed(object, state);
         }
 
         static void build_update_request(self &object,
@@ -257,7 +257,7 @@ public:
                     sresp.throw_ec();
                 clear();
                 from_repr(sresp.result());
-                Foreach<Mixins...>::set_from_db(*this, true);
+                Foreach<Mixins...>::set_db_backed(*this, true);
             }
         );
         return Factory<ClientRequest>::create(std::move(jgetreq), session,
@@ -275,17 +275,19 @@ public:
         Foreach<Mixins...>::commit(*this, db);
     }
 
-    void commit(std::shared_ptr<RPC::ClientSession> session) {
-        std::shared_ptr<RPC::ClientRequest> req_handle = commit_async(session);
+    void commit(std::shared_ptr<RPC::ClientSession> session,
+                               bool force_push_id = false) {
+        std::shared_ptr<RPC::ClientRequest> req_handle =
+                   commit_async(session, force_push_id);
         req_handle->complete();
     }
 
-    std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
-                                                                              session) {
+   std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
+                                                  session, bool force_push_id = false) {
         using namespace RPC;
         using namespace JSONRPC;
 
-        if (from_db()) {
+        if (db_backed()) {
             std::unique_ptr<JSONRPC::BatchRequest> jupdatereq =
                                         build_update_request();
             auto handler = wrap_refcount_check(
@@ -297,20 +299,26 @@ public:
                                 resp.throw_ec();
                         }
                     );
-                    Foreach<Mixins...>::set_from_db(*this, true);
+                    Foreach<Mixins...>::set_db_backed(*this, true);
                     Foreach<Mixins...>::set_modified(*this, false);
                 }
             );
             return Factory<RPC::ClientRequest>::create(std::move(jupdatereq),
                                                            session, handler);
         } else {
-            std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request();
+            // does not push ID if it was generated automatically
+            std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request(
+                             !this->IndexType<Database, Derived>::generated_id() ||
+                                                                    force_push_id);
             auto handler = wrap_refcount_check(
                 [this](std::unique_ptr<Response> response) -> void {
                     const SingleResponse sresp(std::move(response));
                     if (sresp.has_error())
                         sresp.throw_ec();
-                    Foreach<Mixins...>::set_from_db(*this, true);
+
+                    self::assign_id(sresp.result().GetString());
+
+                    Foreach<Mixins...>::set_db_backed(*this, true);
                     Foreach<Mixins...>::set_modified(*this, false);
                 }
             );
@@ -354,11 +362,19 @@ public:
 
     rapidjson::Value rpc_create(Database &db, const RPC::SingleCall &call,
                               rapidjson::Document::AllocatorType &alloc) {
+        Derived &d = static_cast<Derived &>(*this); 
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
-        from_repr(jrepr);
-        remove_existing(db); 
+
+        // generates database-unique id 
+        this->IndexType<Database, Derived>::generate_id(db);
+        from_repr(jrepr); // might overwrite above id
+        if (d.exists(db))
+            throw exceptions::ObjectExists(d.type(), d.id());
         commit(db);
-        return rapidjson::Value("OK");
+
+        rapidjson::Value jid;
+        jid.SetString(d.id().c_str(), alloc);
+        return jid;
     }
 
     rapidjson::Value rpc_remove(Database &db, const RPC::SingleCall &call,
@@ -402,15 +418,16 @@ public:
         return repr(alloc);
     }
 
-    rapidjson::Value repr(rapidjson::Document::AllocatorType &alloc) const {
+    rapidjson::Value repr(rapidjson::Document::AllocatorType &alloc,
+                                        bool push_id = true) const {
         rapidjson::Value obj_repr(rapidjson::kObjectType);
-        repr(obj_repr, alloc);
+        repr(obj_repr, alloc, push_id);
         return obj_repr;
     }
 
-    rapidjson::Document repr() const {
+    rapidjson::Document repr(bool push_id = true) const {
         rapidjson::Document obj_repr(rapidjson::kObjectType);
-        repr(obj_repr, obj_repr.GetAllocator());
+        repr(obj_repr, obj_repr.GetAllocator(), push_id);
         return obj_repr;
     }
 
@@ -426,7 +443,9 @@ public:
         if (!obj_repr.IsObject())
             throw exceptions::InvalidRepr("repr is not a JSON object");
 
-        self::assign_id(id_from_repr(obj_repr)); // throws
+        // if repr has no id, it will be generated
+        if (repr_has_id(obj_repr))
+            self::assign_id(id_from_repr(obj_repr)); // throws
 
         // checks type
         rapidjson::Value::ConstMemberIterator type = obj_repr.FindMember("type");
@@ -451,8 +470,8 @@ public:
         return Foreach<Mixins...>::modified(*this);
     }
 
-    bool from_db() const {
-        return Foreach<Mixins...>::from_db(*this);
+    bool db_backed() const {
+        return Foreach<Mixins...>::db_backed(*this);
     }
 
     static const std::vector<RPC::Method<Database, Derived>> &methods() {
@@ -481,11 +500,13 @@ public:
 
 private:
     void repr(rapidjson::Value &robj, rapidjson::Document::AllocatorType
-                                                         &alloc) const {
-        rapidjson::Value id;
-        const std::string &sid = this->IndexType<Database, Derived>::id();
-        id.SetString(sid.c_str(), sid.length(), alloc);
-        robj.AddMember("id", id, alloc);
+                                    &alloc, bool push_id = true) const {
+        if (push_id) {
+            rapidjson::Value id;
+            const std::string &sid = this->IndexType<Database, Derived>::id();
+            id.SetString(sid.c_str(), sid.length(), alloc);
+            robj.AddMember("id", id, alloc);
+        }
 
         rapidjson::Value type;
         type.SetString(Derived::type().c_str(), Derived::type().length(),
@@ -493,6 +514,11 @@ private:
         robj.AddMember("type", type, alloc);
 
         Foreach<Mixins...>::repr(*this, robj, alloc);
+    }
+
+    bool repr_has_id(const rapidjson::Value &obj_repr) {
+        rapidjson::Value::ConstMemberIterator id = obj_repr.FindMember("id"); 
+        return id != obj_repr.MemberEnd();
     }
 
     std::string id_from_repr(const rapidjson::Value &obj_repr) {
@@ -530,7 +556,8 @@ private:
         return jreq;
     }
 
-    std::unique_ptr<JSONRPC::SingleRequest> build_create_request() {
+    std::unique_ptr<JSONRPC::SingleRequest> build_create_request(
+                                           bool push_id = true) {
         // TODO better
         auto jreq = std::make_unique<JSONRPC::SingleRequest>();
         jreq->id(self::id() + ":" + uuid_string());
@@ -542,7 +569,7 @@ private:
         jtype.SetString(self::type().c_str(), jreq->allocator());
         jreq->params().AddMember("type", jtype, jreq->allocator());
 
-        Value jrepr = repr(jreq->allocator());
+        Value jrepr = repr(jreq->allocator(), push_id);
         jreq->params().AddMember("repr", jrepr, jreq->allocator());
 
         return jreq;

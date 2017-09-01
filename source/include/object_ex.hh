@@ -16,6 +16,18 @@ namespace exceptions {
             return JSONRPC::ErrorCode::NO_SUCH_OBJECT;
         }
     };
+
+    class ObjectExists : public ExceptionBase {
+    public:
+        using ExceptionBase::ExceptionBase;
+
+        ObjectExists(std::string type, std::string id)
+        : ExceptionBase("Object already exists: " + type + ":" + id) {}
+
+        virtual JSONRPC::ErrorCode ec() const {
+            return JSONRPC::ErrorCode::OBJECT_EXISTS;
+        }
+    };
 }
 }
 

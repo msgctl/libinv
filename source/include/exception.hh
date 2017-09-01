@@ -9,6 +9,7 @@ namespace JSONRPC {
     enum class ErrorCode : int {
         NO_SUCH_OBJECT = -32000,
         NO_SUCH_FILE = -32001,
+        OBJECT_EXISTS = -32002,
 
         PARSE_ERROR = -32700,
         INVALID_REQUEST = -32600,

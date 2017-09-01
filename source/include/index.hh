@@ -67,10 +67,7 @@ public:
         generate_id();
     }
     StringIndexedObject(Database &db) {
-        Derived &derived = static_cast<Derived &>(*this);
-        do {
-            derived.generate_id();
-        } while(exists(db) != -1);
+        generate_id(db);
     }
 
     std::string id() const {
@@ -79,14 +76,26 @@ public:
 
     void assign_id(std::string id) {
         m_id = id;
+        m_generated_id = false;
     }
 
     void get(Database &db, std::string uuid) {
-        id_from_string(uuid);
+        assign_id(uuid);
     }
 
     void generate_id() {
-        m_id = Derived::type() + std::to_string(rand() % 1000);
+        m_id = Derived::type() + std::to_string(rand() % 10000);
+        m_generated_id = true;
+    }
+
+    void generate_id(Database &db) {
+        do {
+            generate_id();
+        } while(super::exists(db));
+    }
+
+    bool generated_id() const {
+        return m_generated_id;
     }
 
 protected:
@@ -100,6 +109,7 @@ protected:
 
 private:
     std::string m_id;
+    bool m_generated_id;
 };
 
 template<class Database, class Derived>
@@ -111,10 +121,7 @@ public:
         generate_id();
     }
     Base64ID(Database &db) {
-        Derived &derived = static_cast<Derived &>(*this);
-        do {
-            derived.generate_id();
-        } while(db.impl().check(derived.path()) != -1);
+        generate_id(db);
     }
 
     std::string id() const {
@@ -123,10 +130,11 @@ public:
 
     void assign_id(std::string uuid) {
         id_from_string(uuid);
+        m_generated_id = false;
     }
 
     void get(Database &db, std::string uuid) {
-        id_from_string(uuid);
+        assign_id(uuid);
     }
 
     void generate_id() {
@@ -137,6 +145,18 @@ public:
             kyotocabinet::baseencode((const void *)(&uuid), 6);
         m_uuid = suuid;
         delete suuid;
+
+        m_generated_id = true;
+    }
+
+    void generate_id(Database &db) {
+        do {
+            generate_id();
+        } while(super::exists(db));
+    }
+
+    bool generated_id() const {
+        return m_generated_id;
     }
 
 protected:
@@ -151,6 +171,7 @@ protected:
 
 private:
     std::string m_uuid;
+    bool m_generated_id;
 };
 
 template<class Database, class Derived>
@@ -162,10 +183,7 @@ public:
         generate_id();
     }
     UUIDIndexedObject(Database &db) {
-        Derived &derived = static_cast<Derived &>(*this);
-        do {
-            derived.generate_id();
-        } while(db.impl().check(derived.path()) != -1);
+        generate_id(db);
     }
 
     std::string id() const {
@@ -176,14 +194,26 @@ public:
 
     void assign_id(std::string uuid) {
         id_from_string(uuid);
+        m_generated_id = false;
     }
 
     void get(Database &db, std::string uuid) {
-        id_from_string(uuid);
+        assign_id(uuid);
     }
 
     void generate_id() {
         uuid_generate(m_uuid);
+        m_generated_id = true;
+    }
+
+    void generate_id(Database &db) {
+        do {
+            generate_id();
+        } while(super::exists(db));
+    }
+
+    bool generated_id() const {
+        return m_generated_id;
     }
 
 protected:
@@ -198,6 +228,7 @@ protected:
 
 private:
     uuid_t m_uuid;
+    bool m_generated_id;
 };
 
 }

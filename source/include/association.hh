@@ -92,7 +92,7 @@ public:
             m_assoc.insert(lkey.remote_part());
         }
 
-        m_from_db = true;
+        m_db_backed = true;
     }
 
     void commit(Database &db) {
@@ -117,7 +117,7 @@ public:
         }
         m_add.clear();
 
-        m_from_db = true;
+        m_db_backed = true;
         m_modified = false;
     }
 
@@ -243,12 +243,12 @@ public:
         return m_modified;
     }
 
-    bool from_db() const {
-        return m_from_db;
+    bool db_backed() const {
+        return m_db_backed;
     }
 
-    void set_from_db(bool state) {
-        m_from_db = state;
+    void set_db_backed(bool state) {
+        m_db_backed = state;
     }
 
     void set_modified(bool state) {
@@ -296,7 +296,7 @@ private:
     std::set<IndexKey> m_add;
     std::set<IndexKey> m_remove;
     bool m_modified = false;
-    bool m_from_db = false;
+    bool m_db_backed = false;
 };
 
 }

@@ -87,7 +87,7 @@ public:
             } catch (std::out_of_range &oo) {}
         }
 
-        m_from_db = true;
+        m_db_backed = true;
     }
 
     void commit(Database &db) {
@@ -111,7 +111,7 @@ public:
                       + "," + kv.second + ")" + db.impl().error().message());
         }
 
-        m_from_db = true;
+        m_db_backed = true;
     } 
 
     std::unique_ptr<JSONRPC::SingleRequest> build_update_request(
@@ -277,12 +277,12 @@ public:
         return true; // TODO compute the difference
     }
 
-    bool from_db() const {
-        return m_from_db;
+    bool db_backed() const {
+        return m_db_backed;
     }
 
-    void set_from_db(bool state) {
-        m_from_db = state;
+    void set_db_backed(bool state) {
+        m_db_backed = state;
     }
 
     void set_modified(bool state) {
@@ -314,7 +314,7 @@ private:
 
     AttrMap m_attrs;
     IdVec m_delete;
-    bool m_from_db = false;
+    bool m_db_backed = false;
 };
 
 }

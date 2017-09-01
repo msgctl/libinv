@@ -42,7 +42,7 @@ CC  := gcc
 CXX := g++
 LD  := g++
 DBMGR := kctreemgr
-CXXFLAGS := -std=c++17 -fPIC -O0 -g
+CXXFLAGS := -std=c++17 -fPIC -O3 -g
 SOFLAGS  := -shared
 
 .PHONY: all depend clean mrproper googletest submodules test \
@@ -104,7 +104,7 @@ test: $(TESTDBS) $(UNITTEST_LOGS)
 build/unittest/%.xml: build/unittest/% build/unittest/%.kct $(DEPEND)
 	$(DBMGR) clear $(word 2, $^)
 	LD_LIBRARY_PATH=$(UNITTEST_LD_LIBRARY_PATH) gdb -x unittest/gdbscript \
-                                           --args $^  --gtest_output=xml:$@
+                   --args $(word 2, $^) $(word 3, $^) --gtest_output=xml:$@
 
 build/%.cc.d: source/%.cc
 	$(CXX) -MM $< -o $@ $(INC) $(CXXFLAGS)

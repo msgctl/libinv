@@ -178,14 +178,14 @@ using StandardDataModel = Datamodel<Category, Sticker, Picture,
 }
 
 namespace stdtypes {
-    typedef types::Category<> Category;
-    typedef types::StickerPrefix StickerPrefix;
-    typedef types::Sticker<> Sticker;
-    typedef types::Picture<> Picture;
-    typedef types::Item<> Item;
-    typedef types::GTIN<> GTIN;
-    typedef types::ISBN<> ISBN;
-    typedef types::Owner<> Owner;
+    typedef Shared<types::Category<>> Category;
+    typedef Shared<types::StickerPrefix> StickerPrefix;
+    typedef Shared<types::Sticker<>> Sticker;
+    typedef Shared<types::Picture<>> Picture;
+    typedef Shared<types::Item<>> Item;
+    typedef Shared<types::GTIN<>> GTIN;
+    typedef Shared<types::ISBN<>> ISBN;
+    typedef Shared<types::Owner<>> Owner;
 }
 
 }

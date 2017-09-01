@@ -4,6 +4,7 @@
 #include <memory>
 #include <typeinfo>
 #include <functional>
+#include <unistd.h>
 #include "stdtypes.hh"
 #include "rpc.hh"
 #include "jsonrpc.hh"
@@ -22,6 +23,7 @@ using namespace inventory::RPC;
 class HTTPTest : public ::testing::Test {
 public:
     HTTPTest() {
+        unlink(g_argv[1]);
         m_db.open(g_argv[1]);
     }
 
@@ -175,6 +177,7 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     EXPECT_EQ(first->repr_string(), third->repr_string());
 
     Shared<Item<>> second_box;
+    second_box->commit(session);
     second_box["name"] = "box2";
     second_box += box;
     second_box->commit(session);
@@ -182,6 +185,14 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
 
     box_->get(session);
     EXPECT_EQ(box->repr_string(), box_->repr_string());
+
+    Shared<Item<>> auto_id;
+    std::string id_before = auto_id->id();
+    auto_id["color"] = "yellow";
+    auto_id->commit(session);
+    std::string id_after = auto_id->id();
+    EXPECT_NE(id_before, id_after);
+    auto_id->get(session);
 }
 
 int main(int argc, char **argv) {
