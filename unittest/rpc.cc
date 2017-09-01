@@ -179,20 +179,41 @@ TEST_F(RPCTest, RPC_commit_reqs) {
 
     // first commit
     auto client_session = std::make_shared<DummySession>();
-    std::shared_ptr<RPC::ClientRequest> commit_req =
-                   one->commit_async(client_session);
-    // should be a *create* request
-    std::cout << commit_req->string() << std::endl;
+    {
+        std::shared_ptr<RPC::ClientRequest> commit_req =
+                       one->commit_async(client_session);
+        // should be a *create* request
+        std::cout << commit_req->string() << std::endl;
+    }
 
     // simulate remote commit (sets m_from_db)
     one->commit(m_db);
 
     // modify
     one["abc"] = "bca";
-    std::shared_ptr<RPC::ClientRequest> update_req =
-                   one->commit_async(client_session);
-    // should be an *update* request
-    std::cout << update_req->string() << std::endl;
+    {
+        std::shared_ptr<RPC::ClientRequest> update_req =
+                       one->commit_async(client_session);
+        // should be an *update* request (attribute-only)
+        std::cout << update_req->string() << std::endl;
+    }
+
+    Shared<Owner<>> two("jones");
+    {
+        std::shared_ptr<RPC::ClientRequest> commit_req =
+                       two->commit_async(client_session);
+        // should be an *update* request (attribute-only)
+        std::cout << commit_req->string() << std::endl;
+    }
+    two->commit(m_db);
+    two *= one;
+    {
+        std::shared_ptr<RPC::ClientRequest> update_req =
+                       one->commit_async(client_session);
+        // should be an *update* request (attribute-only)
+        std::cout << update_req->string() << std::endl;
+    }
+
 }
 
 int main(int argc, char **argv) {

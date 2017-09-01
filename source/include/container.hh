@@ -122,10 +122,18 @@ public:
         Derived &derived = static_cast<Derived &>(*this);        
         auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
         jreq->id(derived.id() + ":" + uuid_string());
-        jreq->method("attribute.repr.set");
+        jreq->method("object.attribute.repr.set");
         jreq->params(true);
 
         using namespace rapidjson;
+        Value jid;
+        jid.SetString(derived.id().c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(Derived::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
         Value jrepr = repr(jreq->allocator());
         jreq->params().AddMember("repr", jrepr, jreq->allocator());
         return jreq;
@@ -149,12 +157,22 @@ public:
         if (call.jsonrpc()->is_notification())
             return rapidjson::Value(rapidjson::kNullType);
 
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
         get(db);
         return repr(alloc);
     }
 
     rapidjson::Value rpc_attribute_set(Database &db, const RPC::SingleCall &call,
                                      rapidjson::Document::AllocatorType &alloc) {
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
         const char *attrn = RPC::ObjectCallParams(call)["key"].GetString();
         const char *attrv = RPC::ObjectCallParams(call)["value"].GetString();
         (*this)[attrn] = attrv;
@@ -171,6 +189,11 @@ public:
         // never generate responses to notifications
         if (call.jsonrpc()->is_notification())
             return rapidjson::Value(rapidjson::kNullType);
+
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
 
         // TODO optimize
         get(db);
@@ -198,11 +221,24 @@ public:
 
     rapidjson::Value rpc_repr_get(Database &db, const RPC::SingleCall &call,
                                 rapidjson::Document::AllocatorType &alloc) {
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
+        get(db);
         return repr(alloc);
     }
 
     rapidjson::Value rpc_repr_set(Database &db, const RPC::SingleCall &call,
                                 rapidjson::Document::AllocatorType &alloc) {
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
+        get(db);
+        clear();
         from_repr(RPC::ObjectCallParams(call)["repr"]);
         commit(db);
 

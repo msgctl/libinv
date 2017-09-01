@@ -418,13 +418,16 @@ public:
         case JSONRPC::ErrorCode::NO_SUCH_OBJECT:
             throw ::inventory::exceptions::NoSuchObject(error_message());
         break;
-        default:
-            throw std::runtime_error("Unhandled exception: " __FILE__);
-        break;
+        default: {
+            std::string errstr = "Unhandled exception: " __FILE__ " ("
+                                 + std::to_string((int)(ec())) + "): "
+                                                    + error_message();
+            throw std::runtime_error(errstr);
+        } break;
         }
     }
 
-    const char *error_message() const {
+    std::string error_message() const {
         return error()["message"].GetString();
     }
 
@@ -443,6 +446,8 @@ protected:
 
 class BatchResponse : public ResponseBase {
 public:
+    typedef std::function<void(const SingleResponse &)> ForeachCb;
+
     // BatchResponse instance with its separate Allocator (refcounting)
     BatchResponse()
     : ResponseBase(rapidjson::kArrayType) {}
@@ -450,11 +455,13 @@ public:
     // Converting from a generic, just-parsed Response instance.
     BatchResponse(Response &&resp)
     : ResponseBase(std::move(resp)) {
-        if (is_single(*m_jval)) {
-            throw InvalidUse("tried to make a BatchResponse instance out of "
-                                                       "a single response.");
-        }
+        check_single();
     } 
+
+    BatchResponse(std::unique_ptr<Response> response)
+    : ResponseBase(std::move(*(response.release()))) {
+        check_single();
+    }
 
     virtual ~BatchResponse() {}
 
@@ -462,8 +469,24 @@ public:
     // allocator if it's ever going to be a part of BatchResponse.
     void push_back(SingleResponse &&response);
 
+    void foreach(ForeachCb cb) const {
+        for (rapidjson::Value::ValueIterator itr = m_jval->Begin();
+                                     itr != m_jval->End(); ++itr) {
+            const SingleResponse sresp(&*itr);
+            cb(sresp);
+        }
+    }
+
     bool empty() const {
         return !m_jval->Size();
+    }
+
+private:
+    void check_single() const {
+        if (is_single(*m_jval)) {
+            throw InvalidUse("tried to make a BatchResponse instance out of "
+                                                       "a single response.");
+        }
     }
 };
 

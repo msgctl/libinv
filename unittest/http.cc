@@ -69,7 +69,7 @@ TEST_F(HTTPTest, HTTPClient_curl_keepalive) {
     using namespace RPC;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 10; i++) {
         Shared<Item<>> first;
         first["testattr"] = "test";
         first->commit(session);
@@ -136,6 +136,53 @@ TEST_F(HTTPTest, HTTPClient_exception_nosuchobject) {
         first->get(session, "0fe93648-8984-11e7-88c0-00173e539aaa");
     } catch (const NoSuchObject &) {}
 } 
+
+TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
+    using namespace std;
+    using namespace RPC;
+    std::shared_ptr<ClientSession> session = m_client->create_session();
+
+    Shared<Item<>> first;
+    first["testattr"] = "test";
+    first->commit(session);
+
+    Shared<Owner<>> owner("jones");
+    owner->commit(session);
+
+    owner *= first;
+    first->commit(session);
+
+    Shared<Item<>> second;
+    second->get(session, first->id());
+    EXPECT_EQ(first->repr_string(), second->repr_string());
+
+    Shared<Owner<>> owner_("jones");
+    owner_->get(session);
+    EXPECT_EQ(owner->repr_string(), owner_->repr_string());
+
+    Shared<Item<>> box;
+    box["name"] = "boxen";
+    box->commit(session);
+    box += first;
+    box->commit(session);
+
+    Shared<Item<>> box_;
+    box_->get(session, box->id());
+    EXPECT_EQ(box->repr_string(), box_->repr_string());
+
+    Shared<Item<>> third;
+    third->get(session, first->id());
+    EXPECT_EQ(first->repr_string(), third->repr_string());
+
+    Shared<Item<>> second_box;
+    second_box["name"] = "box2";
+    second_box += box;
+    second_box->commit(session);
+    EXPECT_NE(box->repr_string(), box_->repr_string());
+
+    box_->get(session);
+    EXPECT_EQ(box->repr_string(), box_->repr_string());
+}
 
 int main(int argc, char **argv) {
     assert(argc > 1);

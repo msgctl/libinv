@@ -229,6 +229,7 @@ public:
     void remove(Database &db) {
         std::unique_lock<std::shared_mutex> lock(g_object_rwlock);
         clear();
+        Foreach<Mixins...>::commit(*this, db);
         IndexType<Database, Derived>::remove(db);
     }
 
@@ -254,6 +255,7 @@ public:
                 const SingleResponse sresp(std::move(response));
                 if (sresp.has_error())
                     sresp.throw_ec();
+                clear();
                 from_repr(sresp.result());
                 Foreach<Mixins...>::set_from_db(*this, true);
             }
@@ -288,7 +290,13 @@ public:
                                         build_update_request();
             auto handler = wrap_refcount_check(
                 [this](std::unique_ptr<Response> response) -> void {
-                    // TODO iterate, throw errors
+                    const BatchResponse bresp(std::move(response));
+                    bresp.foreach(
+                        [](const SingleResponse &resp) -> void {
+                            if (resp.has_error())
+                                resp.throw_ec();
+                        }
+                    );
                     Foreach<Mixins...>::set_from_db(*this, true);
                     Foreach<Mixins...>::set_modified(*this, false);
                 }
@@ -334,23 +342,6 @@ public:
 
     rapidjson::Value rpc_call(Database &db, const RPC::SingleCall &call,
                             rapidjson::Document::AllocatorType &alloc) {
-        // set the index id if specified in the request or else a new id (and
-        // object) will be generated automatically 
-        if (!RPC::ObjectCallParams(call).id().empty()) {
-            this->IndexType<Database, Derived>::get(db,
-                     RPC::ObjectCallParams(call).id());
-            
-            if (!exists(db)) {
-                throw exceptions::NoSuchObject(
-                    this->IndexType<Database, Derived>::type(),
-                    this->IndexType<Database, Derived>::id()
-                );
-            }
-        } else {
-            // create a new object
-            commit(db);
-        }
-
         try {
             // for RPC implementation in Derived classes
             Derived &derived = static_cast<Derived &>(*this); 
@@ -366,13 +357,18 @@ public:
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         from_repr(jrepr);
         remove_existing(db); 
-        // no need to check for preexisting objects here
         commit(db);
         return rapidjson::Value("OK");
     }
 
     rapidjson::Value rpc_remove(Database &db, const RPC::SingleCall &call,
                               rapidjson::Document::AllocatorType &alloc) {
+        rpc_get_index(call);
+        if (!exists(db)) {
+            Derived &d = static_cast<Derived &>(*this); 
+            throw exceptions::NoSuchObject(d.type(), d.id());
+        }
+
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         get(db);
         remove(db);
@@ -381,6 +377,12 @@ public:
 
     rapidjson::Value rpc_clear(Database &db, const RPC::SingleCall &call,
                               rapidjson::Document::AllocatorType &alloc) {
+        rpc_get_index(call);
+        if (!exists(db)) {
+            Derived &d = static_cast<Derived &>(*this); 
+            throw exceptions::NoSuchObject(d.type(), d.id());
+        }
+
         const rapidjson::Value &jrepr = RPC::ObjectCallParams(call)["repr"];
         get(db);
         clear();
@@ -390,6 +392,12 @@ public:
 
     rapidjson::Value rpc_get(Database &db, const RPC::SingleCall &call,
                            rapidjson::Document::AllocatorType &alloc) {
+        rpc_get_index(call);
+        if (!exists(db)) {
+            Derived &d = static_cast<Derived &>(*this); 
+            throw exceptions::NoSuchObject(d.type(), d.id());
+        }
+
         get(db);
         return repr(alloc);
     }
@@ -432,7 +440,6 @@ public:
                            + type->value.GetString() + " repr");
         }
 
-        clear();
         Foreach<Mixins...>::from_repr(*this, obj_repr);
     }
 
@@ -460,6 +467,16 @@ public:
 
     static const std::string &mixin_type() {
         return Derived::type();
+    }
+
+
+    void rpc_get_index(const RPC::SingleCall &call) {
+        if (!RPC::ObjectCallParams(call).id().empty()) {
+            this->IndexType<Database, Derived>::assign_id(
+                        RPC::ObjectCallParams(call).id());
+        } else {
+            throw RPC::exceptions::InvalidParameters("No id supplied.");
+        }
     }
 
 private:

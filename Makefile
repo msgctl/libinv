@@ -42,7 +42,7 @@ CC  := gcc
 CXX := g++
 LD  := g++
 DBMGR := kctreemgr
-CXXFLAGS := -std=c++17 -fPIC -O0
+CXXFLAGS := -std=c++17 -fPIC -O0 -g
 SOFLAGS  := -shared
 
 .PHONY: all depend clean mrproper googletest submodules test \
@@ -125,8 +125,20 @@ build/unittest/%: build/unittest/%.o $(LIBTARGETS) $(DEPEND)
 	$(LD) $(LIB) $< $(LIBTARGETS:build/lib%.so=-l%) \
         $(UNITTESTLIBS) -o $@
 
-build/unittest/%key.pem:
+build/unittest/%_key.pem:
 	openssl genrsa -out $@ 2048
+
+build/unittest/%_cert.pem: build/unittest/%_key.pem
+	openssl req -days 365 -out $@ -new -x509 -key $<
+
+build/unittest/%_csr.pem: build/unittest/%_key.pem
+	openssl req -new -key $< -out $@
+
+build/unittest/client_cert.pem: build/unittest/client_key.pem \
+                                build/unittest/client_csr.pem \
+                                build/unittest/ca_cert.pem
+	openssl x509 -req -extensions client_cert -days 365 -in $(word 2, $^)\
+        -CA $(word 3, $^)
 
 build/%.hh.d: source/include/%.hh
 	$(CXX) -fpch-deps $(INC) -MM $(CXXFLAGS) $< -o $@

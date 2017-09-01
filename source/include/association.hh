@@ -129,10 +129,19 @@ public:
         Derived &derived = static_cast<Derived &>(*this);        
         auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
         jreq->id(derived.id() + ":" + uuid_string());
-        jreq->method("link.update");
+        jreq->method("object.link.update");
         jreq->params(true);
 
+        // TODO better! abstract this…
         using namespace rapidjson;
+        Value jid;
+        jid.SetString(derived.id().c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(Derived::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
         Value jadd(kArrayType);
         for (const IndexKey &key : m_add) {
             Value jkey;
@@ -184,6 +193,11 @@ public:
 
     rapidjson::Value rpc_update(Database &db, const RPC::SingleCall &call,
                               rapidjson::Document::AllocatorType &alloc) {
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
         assoc_remove_batch(RPC::ObjectCallParams(call)["remove"]);
         assoc_set_batch(RPC::ObjectCallParams(call)["add"]);
         commit(db);
