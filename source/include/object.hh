@@ -417,6 +417,8 @@ public:
 
         modes_from_repr(jset);
         remove_modes(jremove);
+
+        return rapidjson::Value("OK");
     }
 
     rapidjson::Value rpc_remove(Database &db, const RPC::SingleCall &call,
@@ -664,7 +666,7 @@ private:
 
         if (modes_modified()) {
             std::unique_ptr<JSONRPC::SingleRequest> modereq =
-                                 build_mode_update_request();
+               build_mode_update_request(jbreq->allocator());
             jbreq->push_back(std::move(modereq));
         }
 
@@ -713,8 +715,9 @@ private:
         return jreq;
     }
 
-    std::unique_ptr<JSONRPC::SingleRequest> build_mode_update_request() {
-        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+    std::unique_ptr<JSONRPC::SingleRequest> build_mode_update_request(
+                          rapidjson::Document::AllocatorType &alloc) {
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>(&alloc);
         jreq->id(self::id() + ":" + uuid_string());
         jreq->method("object.mode.update");
         jreq->params(true);

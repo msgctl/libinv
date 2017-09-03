@@ -42,7 +42,7 @@ CC  := gcc
 CXX := g++
 LD  := g++
 DBMGR := kctreemgr
-CXXFLAGS := -std=c++17 -fPIC -O3 -g
+CXXFLAGS := -std=c++17 -fPIC -O0 -g
 SOFLAGS  := -shared
 
 .PHONY: all depend clean mrproper googletest submodules test \

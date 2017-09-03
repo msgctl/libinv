@@ -153,6 +153,10 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     first["testattr"] = "test";
     first->commit(session);
 
+    access_mode.set(USER, READ);
+    first->set_mode("user_handle", access_mode);
+    first->commit(session); // update
+
     Owner owner("jones");
     owner->commit(session);
 
