@@ -86,7 +86,15 @@ public:
                 m_attrs[ak] = value;
             } catch (std::out_of_range &oo) {}
         }
+        on_get();
+    }
 
+    void on_commit() {
+        m_delete.clear();
+        m_db_backed = true;
+    }
+
+    void on_get() {
         m_db_backed = true;
     }
 
@@ -101,7 +109,6 @@ public:
             if (!db.impl().remove(attribute_path))
                 throw std::runtime_error("Couldn't remove key");
         }
-        m_delete.clear();
 
         for (auto &kv : m_attrs) {
             std::string attribute_path = Attribute<self>::db_key(container_path,
@@ -110,8 +117,7 @@ public:
                 throw std::runtime_error("Couldn't set kv (" + attribute_path
                       + "," + kv.second + ")" + db.impl().error().message());
         }
-
-        m_db_backed = true;
+        on_commit();
     } 
 
     std::unique_ptr<JSONRPC::SingleRequest> build_update_request(

@@ -91,8 +91,18 @@ public:
 
             m_assoc.insert(lkey.remote_part());
         }
+        on_get();
+    }
 
+    void on_get() { 
         m_db_backed = true;
+    }
+
+    void on_commit() {
+        m_remove.clear();
+        m_add.clear();
+        m_db_backed = true;
+        m_modified = false;
     }
 
     void commit(Database &db) {
@@ -106,7 +116,6 @@ public:
             if (!db.impl().remove(link.inverted()))
                 throw std::runtime_error("Couldn't remove keys");
         }
-        m_remove.clear();
 
         for (const IndexKey &p : m_add) {
             LinkKey link({derived.path(), p.string()});
@@ -115,10 +124,8 @@ public:
             if (!db.impl().set(link.inverted(), ""))
                 throw std::runtime_error("Couldn't set kv");
         }
-        m_add.clear();
 
-        m_db_backed = true;
-        m_modified = false;
+        on_commit();
     }
 
     std::unique_ptr<JSONRPC::SingleRequest> build_update_request(

@@ -13,7 +13,7 @@
 
 using namespace std;
 using namespace inventory;
-using namespace inventory::types;
+using namespace inventory::stdtypes;
 
 static int g_argc;
 static char **g_argv;
@@ -33,7 +33,7 @@ public:
         m_client = std::make_unique<HTTPClient>("https://localhost:8080", m_cwq, false);
         m_server = std::make_unique<HTTPServer>(8080, m_swq, 
             [this](ServerRequest &request) -> void {
-                request.complete<Database<>, StandardDataModel>(m_db);
+                request.complete<Database<>, types::StandardDataModel>(m_db);
                 //std::cout << "completed" << std::endl;
             }, "ca.key", "ca.crt"
         );
@@ -57,11 +57,11 @@ TEST_F(HTTPTest, HTTPClient_complete_sync) {
     using namespace RPC;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    Shared<Item<>> first;
+    Item first;
     first["testattr"] = "test";
     first->commit(session);
 
-    Shared<Item<>> second;
+    Item second;
     second->get(session, first->id());
     EXPECT_EQ(first->repr_string(), second->repr_string());
 } 
@@ -72,11 +72,11 @@ TEST_F(HTTPTest, HTTPClient_curl_keepalive) {
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
     for (int i = 0; i < 10; i++) {
-        Shared<Item<>> first;
+        Item first;
         first["testattr"] = "test";
         first->commit(session);
 
-        Shared<Item<>> second;
+        Item second;
         second->get(session, first->id());
         EXPECT_EQ(first->repr_string(), second->repr_string());
     }
@@ -87,13 +87,13 @@ TEST_F(HTTPTest, HTTPClient_complete_async) {
     using namespace std;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    Shared<Item<>> first;
+    Item first;
     first["testattr"] = "test";
     std::shared_ptr<ClientRequest> req_hnd = first->commit_async(session);
     req_hnd->complete_async();
     req_hnd->future().wait();
 
-    Shared<Item<>> second;
+    Item second;
     std::shared_ptr<ClientRequest> req2_hnd = second->get_async(session, first->id());
     req2_hnd->complete_async();
     req2_hnd->future().wait();
@@ -105,13 +105,13 @@ TEST_F(HTTPTest, HTTPClient_async_complete_cb) {
     using namespace std;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    Shared<Item<>> first;
+    Item first;
     first["testattr"] = "test";
     std::shared_ptr<ClientRequest> req_hnd = first->commit_async(session);
     req_hnd->complete_async();
     req_hnd->future().wait();
 
-    Shared<Item<>> second;
+    Item second;
     std::shared_ptr<ClientRequest> req2_hnd = second->get_async(session, first->id());
 
     bool complete_cb = false;
@@ -133,7 +133,7 @@ TEST_F(HTTPTest, HTTPClient_exception_nosuchobject) {
     using namespace ::inventory::exceptions;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    Shared<Item<>> first;
+    Item first;
     try {
         first->get(session, "0fe93648-8984-11e7-88c0-00173e539aaa");
     } catch (const NoSuchObject &) {}
@@ -144,39 +144,44 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     using namespace RPC;
     std::shared_ptr<ClientSession> session = m_client->create_session();
 
-    Shared<Item<>> first;
+    Item first;
+
+    Mode access_mode;
+    access_mode.set(USER, READ | WRITE | LIST);
+    first->set_mode("user_handle", access_mode);
+
     first["testattr"] = "test";
     first->commit(session);
 
-    Shared<Owner<>> owner("jones");
+    Owner owner("jones");
     owner->commit(session);
 
     owner *= first;
     first->commit(session);
 
-    Shared<Item<>> second;
+    Item second;
     second->get(session, first->id());
     EXPECT_EQ(first->repr_string(), second->repr_string());
 
-    Shared<Owner<>> owner_("jones");
+    Owner owner_("jones");
     owner_->get(session);
     EXPECT_EQ(owner->repr_string(), owner_->repr_string());
 
-    Shared<Item<>> box;
+    Item box;
     box["name"] = "boxen";
     box->commit(session);
     box += first;
     box->commit(session);
 
-    Shared<Item<>> box_;
+    Item box_;
     box_->get(session, box->id());
     EXPECT_EQ(box->repr_string(), box_->repr_string());
 
-    Shared<Item<>> third;
+    Item third;
     third->get(session, first->id());
     EXPECT_EQ(first->repr_string(), third->repr_string());
 
-    Shared<Item<>> second_box;
+    Item second_box;
     second_box->commit(session);
     second_box["name"] = "box2";
     second_box += box;
@@ -186,7 +191,7 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     box_->get(session);
     EXPECT_EQ(box->repr_string(), box_->repr_string());
 
-    Shared<Item<>> auto_id;
+    Item auto_id;
     std::string id_before = auto_id->id();
     auto_id["color"] = "yellow";
     auto_id->commit(session);

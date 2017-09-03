@@ -55,7 +55,7 @@ public:
     }
 
     template<class Arg>
-    auto operator*=( Arg &arg) {
+    auto operator*=(Arg &arg) {
         return *m_shptr *= arg;
     }
 
@@ -65,7 +65,7 @@ public:
     }
 
     template<class Arg>
-    auto operator/=( Arg &arg) {
+    auto operator/=(Arg &arg) {
         return *m_shptr /= arg;
     }
 

@@ -45,6 +45,13 @@ public:
     }
 };
 
+class ModeSeparator {
+public:
+    constexpr static const char *string() {
+        return "%"; // TODO escape, change or remove these characters
+    }
+};
+
 template<class S>
 class Key {
 public:
@@ -147,6 +154,33 @@ public:
 
     bool good() const {
         return m_path.size() == 2;
+    }
+};
+
+class ModeKey : public Key<ModeSeparator> {
+public:
+    ModeKey() {}
+
+    ModeKey(std::string path)
+    : Key(path) {}
+
+    ModeKey(std::initializer_list<std::string> tokens)
+    : Key(tokens) {}
+
+    std::string path_part() const {
+        return (*this)[0];
+    }
+
+    std::string handle_part() const {
+        return (*this)[1];
+    }
+
+    bool good() const {
+        return m_path.size() == 2;
+    }
+
+    static std::string prefix(std::string local_part) {
+        return local_part + ModeSeparator::string();
     }
 };
 

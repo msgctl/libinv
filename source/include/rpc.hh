@@ -56,6 +56,10 @@ public:
         return *mp_user;
     }
 
+    Server &server() const {
+        return *m_server;
+    }
+
 protected:
     ServerSession(Server *server)
     : m_server(server) {}
@@ -358,15 +362,26 @@ rapidjson::Value SingleCall::complete_datamodel_call(
     return obj->rpc_call(db, *this, alloc);
 }
 
-// TODO
 template<class Database, class Datamodel>
-class DatamodelHandler {
-    DatamodelHandler() {}
-
+class CallHandler {
 public:
-    rapidjson::Value complete(Database &db,
-                rapidjson::Document::AllocatorType &alloc) {}
-    
+    virtual ~CallHandler() {}
+
+    virtual rapidjson::Value complete(Database &db, const SingleCall &call,
+                            rapidjson::Document::AllocatorType &alloc) = 0;
+};
+
+template<class Database, class Datamodel>
+class DatamodelHandler : public CallHandler<Database, Datamodel> {
+public:
+    virtual rapidjson::Value complete(Database &db, const SingleCall &call,
+                               rapidjson::Document::AllocatorType &alloc) {
+        std::string objtype = ObjectCallParams(call).type();
+        std::unique_ptr<DatamodelObject<Database>> obj( 
+                  Datamodel::template create<Database>(
+                                             objtype));
+        return obj->rpc_call(db, call, alloc);
+    } 
 };
 
 class ClientRequest : public std::enable_shared_from_this<ClientRequest> {

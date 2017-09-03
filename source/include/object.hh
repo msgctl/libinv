@@ -14,6 +14,7 @@
 #include "jsonrpc.hh"
 #include "factory.hh"
 #include "object_ex.hh"
+#include "mode.hh"
 
 namespace inventory {
 
@@ -59,6 +60,9 @@ public:
 
     void set_db_backed(bool state) {}
     void set_modified(bool state) {}
+
+    void on_commit() {}
+    void on_get() {}
 };
 
 extern std::shared_mutex g_object_rwlock;
@@ -166,6 +170,18 @@ class Object : public IndexType<Database, Derived>,
             return false;
         }
 
+        static void on_commit(self &object) {
+            object.T_<Database, Derived>::on_commit();
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::on_commit(object);
+        }
+
+        static void on_get(self &object) {
+            object.T_<Database, Derived>::on_get();
+            if (sizeof...(Mixins_))
+                Foreach<Mixins_...>::on_get(object);
+        }
+
         // TODO modification hash
         // TODO send requests with hash?
         // TODO redo requests if hash different?
@@ -199,6 +215,9 @@ class Object : public IndexType<Database, Derived>,
     };
 
 public:
+    typedef std::function<void(std::string, Mode)> ForeachModeCb;
+    typedef std::map<std::string, Mode> ModeMap;
+
     Object() {}
     Object(std::string id) {
         self::assign_id(id);
@@ -219,10 +238,12 @@ public:
 
     void get(Database &db) {
         std::shared_lock<std::shared_mutex> lock(g_object_rwlock);
+        get_modes(db);
         Foreach<Mixins...>::get(*this, db);
     }
 
     void clear() {
+        clear_modes();
         Foreach<Mixins...>::clear(*this);
     }
 
@@ -257,7 +278,7 @@ public:
                     sresp.throw_ec();
                 clear();
                 from_repr(sresp.result());
-                Foreach<Mixins...>::set_db_backed(*this, true);
+                Foreach<Mixins...>::on_get(*this);
             }
         );
         return Factory<ClientRequest>::create(std::move(jgetreq), session,
@@ -272,7 +293,14 @@ public:
     void commit(Database &db) {
         std::shared_lock<std::shared_mutex> lock(g_object_rwlock);
         this->IndexType<Database, Derived>::commit(db);
+        commit_modes(db);
         Foreach<Mixins...>::commit(*this, db);
+        on_commit();
+    }
+
+    void on_commit() {
+        m_remove_modes.clear();
+        m_add_modes.clear();       
     }
 
     void commit(std::shared_ptr<RPC::ClientSession> session,
@@ -299,8 +327,8 @@ public:
                                 resp.throw_ec();
                         }
                     );
-                    Foreach<Mixins...>::set_db_backed(*this, true);
-                    Foreach<Mixins...>::set_modified(*this, false);
+                    Foreach<Mixins...>::on_commit(*this);
+                    on_commit();
                 }
             );
             return Factory<RPC::ClientRequest>::create(std::move(jupdatereq),
@@ -317,9 +345,8 @@ public:
                         sresp.throw_ec();
 
                     self::assign_id(sresp.result().GetString());
-
-                    Foreach<Mixins...>::set_db_backed(*this, true);
-                    Foreach<Mixins...>::set_modified(*this, false);
+                    Foreach<Mixins...>::on_commit(*this);
+                    on_commit();
                 }
             );
             return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session,
@@ -375,6 +402,21 @@ public:
         rapidjson::Value jid;
         jid.SetString(d.id().c_str(), alloc);
         return jid;
+    }
+
+    rapidjson::Value rpc_mode_update(Database &db, const RPC::SingleCall &call,
+                                   rapidjson::Document::AllocatorType &alloc) {
+        rpc_get_index(call);
+        if (!exists(db)) {
+            Derived &d = static_cast<Derived &>(*this); 
+            throw exceptions::NoSuchObject(d.type(), d.id());
+        }       
+
+        const rapidjson::Value &jset = RPC::ObjectCallParams(call)["mode_set"];
+        const rapidjson::Value &jremove = RPC::ObjectCallParams(call)["mode_remove"];
+
+        modes_from_repr(jset);
+        remove_modes(jremove);
     }
 
     rapidjson::Value rpc_remove(Database &db, const RPC::SingleCall &call,
@@ -440,6 +482,8 @@ public:
     }
 
     void from_repr(const rapidjson::Value &obj_repr) {
+        using namespace rapidjson;
+
         if (!obj_repr.IsObject())
             throw exceptions::InvalidRepr("repr is not a JSON object");
 
@@ -448,7 +492,7 @@ public:
             self::assign_id(id_from_repr(obj_repr)); // throws
 
         // checks type
-        rapidjson::Value::ConstMemberIterator type = obj_repr.FindMember("type");
+        Value::ConstMemberIterator type = obj_repr.FindMember("type");
         if (type == obj_repr.MemberEnd())
             throw exceptions::InvalidRepr("repr lacks \"type\" member");
         if (!type->value.IsString())
@@ -458,6 +502,10 @@ public:
                            + Derived::type() + " instance with "
                            + type->value.GetString() + " repr");
         }
+
+        Value::ConstMemberIterator jmodes = obj_repr.FindMember("modes");
+        if (jmodes != obj_repr.MemberEnd())
+            modes_from_repr(jmodes->value);
 
         Foreach<Mixins...>::from_repr(*this, obj_repr);
     }
@@ -478,6 +526,7 @@ public:
         static const std::vector<RPC::Method<Database, Derived>> ret({
             RPC::Method<Database, Derived>("repr.get", &self::rpc_get),
             RPC::Method<Database, Derived>("repr.create", &self::rpc_create),
+            RPC::Method<Database, Derived>("mode.update", &self::rpc_mode_update),
             RPC::Method<Database, Derived>("remove", &self::rpc_remove),
             RPC::Method<Database, Derived>("clear", &self::rpc_clear),
         });
@@ -488,7 +537,6 @@ public:
         return Derived::type();
     }
 
-
     void rpc_get_index(const RPC::SingleCall &call) {
         if (!RPC::ObjectCallParams(call).id().empty()) {
             this->IndexType<Database, Derived>::assign_id(
@@ -498,20 +546,56 @@ public:
         }
     }
 
+    const ModeMap &modes() const {
+        return m_modes;
+    }
+
+    void clear_modes() {
+        m_modes.clear();
+        m_add_modes.clear();
+        m_remove_modes.clear();
+    }
+
+    bool access(std::string handle, enum Ownership owner,
+                                enum Right right) const {
+        ModeMap::const_iterator mit = m_modes.find(handle);
+        if (mit == m_modes.end())
+            return false;
+        return mit->second.access(owner, right);
+    }
+
+    void set_mode(std::string handle, Mode mode) {
+        m_modes[handle] = mode;
+        m_add_modes[handle] = mode;
+    }
+
+    void remove_mode(std::string handle) {
+        ModeMap::iterator mit = m_modes.find(handle);
+        if (mit != m_modes.end()) {
+            m_remove_modes[handle] = mit->second;
+            m_modes.erase(mit);
+        }
+    }
+
 private:
     void repr(rapidjson::Value &robj, rapidjson::Document::AllocatorType
                                     &alloc, bool push_id = true) const {
+        using namespace rapidjson;
+
         if (push_id) {
-            rapidjson::Value id;
+            Value id;
             const std::string &sid = this->IndexType<Database, Derived>::id();
             id.SetString(sid.c_str(), sid.length(), alloc);
             robj.AddMember("id", id, alloc);
         }
 
-        rapidjson::Value type;
+        Value type;
         type.SetString(Derived::type().c_str(), Derived::type().length(),
                                                                   alloc);
         robj.AddMember("type", type, alloc);
+
+        Value jmodes = modes_repr(alloc);
+        robj.AddMember("modes", jmodes, alloc);
 
         Foreach<Mixins...>::repr(*this, robj, alloc);
     }
@@ -577,6 +661,13 @@ private:
 
     std::unique_ptr<JSONRPC::BatchRequest> build_update_request() {
         auto jbreq = std::make_unique<JSONRPC::BatchRequest>();
+
+        if (modes_modified()) {
+            std::unique_ptr<JSONRPC::SingleRequest> modereq =
+                                 build_mode_update_request();
+            jbreq->push_back(std::move(modereq));
+        }
+
         Foreach<Mixins...>::build_update_request(*this, jbreq->allocator(),
             [&](std::unique_ptr<JSONRPC::SingleRequest> jreq) -> void {
                 if (jreq)
@@ -622,6 +713,42 @@ private:
         return jreq;
     }
 
+    std::unique_ptr<JSONRPC::SingleRequest> build_mode_update_request() {
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("object.mode.update");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jid;
+        jid.SetString(self::id().c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        Value jmode_set(kArrayType);
+        foreach_mode(m_add_modes,
+            [&](std::string handle, Mode mode) -> void {
+                Value jrepr = mode_repr(handle, mode, jreq->allocator());
+                jmode_set.PushBack(jrepr, jreq->allocator());
+            }
+        ); 
+        jreq->params().AddMember("mode_set", jmode_set, jreq->allocator());
+
+        Value jmode_remove(kArrayType);
+        foreach_mode(m_remove_modes,
+            [&](std::string handle, Mode mode) -> void {
+                Value jrepr = mode_repr(handle, mode, jreq->allocator());
+                jmode_remove.PushBack(jrepr, jreq->allocator());
+            }
+        ); 
+        jreq->params().AddMember("mode_remove", jmode_remove, jreq->allocator());
+
+        return jreq;
+    }
+
     RPC::ClientRequest::ResponseHandler wrap_refcount_check(
                   RPC::ClientRequest::ResponseHandler hnd) {
         std::weak_ptr<self> this_weakptr = self::shared_from_this();
@@ -632,6 +759,153 @@ private:
                 hnd(std::move(response));
         };
     }
+
+    static void foreach_mode(const ModeMap &modes, ForeachModeCb cb) {
+        for (const auto &pair : modes)
+            cb(pair.first, pair.second);
+    }
+
+    void foreach_mode(Database &db, ForeachModeCb cb) {
+        Derived &derived = static_cast<Derived &>(*this); 
+
+        std::unique_ptr<kyotocabinet::DB::Cursor> cur(db.impl().cursor());
+        if (!cur->jump(ModeKey::prefix(derived.path())))
+            return;
+
+        std::string path, modestr;
+        while (cur->get(&path, &modestr, true)) {
+            ModeKey key(path);
+            if (key.path_part() != derived.path().string())
+                break;
+            if (!key.good())
+                continue;
+
+            Mode mode(modestr);
+            cb(key.handle_part(), mode);
+        }
+    }
+
+    void get_modes(Database &db) {
+        foreach_mode(db,
+            [this](std::string handle, Mode mode) -> void {
+                m_modes[handle] = mode;
+            }
+        );
+    }
+
+    void commit_modes(Database &db) {
+        for (const auto &pair : m_remove_modes)
+            remove_mode(db, pair.first);
+        for (const auto &pair : m_add_modes)
+            set_mode(db, pair.first, pair.second);
+
+        m_remove_modes.clear();
+        m_add_modes.clear();
+    }
+
+    Mode get_mode(Database &db, std::string handle) const {
+        Derived &derived = static_cast<Derived &>(*this); 
+        Mode retv;
+
+        ModeKey key({derived.path(), handle});
+        std::string modestr;
+        if (db.impl().get(key, &modestr))
+            retv.from_string(modestr.c_str());
+        return retv;
+    }
+
+    void set_mode(Database &db, std::string handle, Mode mode) {
+        Derived &derived = static_cast<Derived &>(*this); 
+
+        ModeKey key({derived.path(), handle});
+        db.impl().set(key, mode.string()); // TODO throw
+    }
+
+    void remove_mode(Database &db, std::string handle) {
+        Derived &derived = static_cast<Derived &>(*this); 
+
+        ModeKey key({derived.path(), handle});
+        db.impl().remove(key); // TODO throw
+    }
+
+    static rapidjson::Value mode_repr(std::string handle, Mode mode,
+                        rapidjson::Document::AllocatorType &alloc) {
+        using namespace rapidjson;
+
+        Value jhandle;
+        jhandle.SetString(handle.c_str(), alloc);
+
+        std::string modestr = mode.string();
+        Value jmode;
+        jmode.SetString(modestr.c_str(), alloc);
+
+        Value jobj(kObjectType);
+        jobj.AddMember("handle", jhandle, alloc);
+        jobj.AddMember("mode", jmode, alloc);
+        return jobj;
+    }
+
+    rapidjson::Value modes_repr(rapidjson::Document::AllocatorType
+                                                   &alloc) const {
+        using namespace rapidjson;
+
+        Value jmodes(kArrayType);
+        foreach_mode(m_modes,
+            [&](std::string handle, Mode mode) -> void {
+                Value jrepr = mode_repr(handle, mode, alloc);
+                jmodes.PushBack(jrepr, alloc);
+            }
+        );
+        return jmodes;
+    }
+
+    void modes_from_repr(const rapidjson::Value &mode_repr) {
+        using namespace rapidjson;
+
+        for (Value::ConstValueIterator itr = mode_repr.Begin();
+                               itr != mode_repr.End(); ++itr) {
+            Mode mode;
+            std::string handle;
+
+            // TODO check values
+
+            Value::ConstMemberIterator handle_ = itr->FindMember("handle");
+            if (handle_ == itr->MemberEnd())
+                throw exceptions::InvalidRepr("mode repr lacks \"handle\" member");
+            handle = handle_->value.GetString();
+
+            Value::ConstMemberIterator mode_ = itr->FindMember("mode");
+            if (mode_ == itr->MemberEnd())
+                throw exceptions::InvalidRepr("mode repr lacks \"mode\" member");
+            mode.from_string(mode_->value.GetString());
+
+            set_mode(handle, mode);
+        }
+    }
+
+    void remove_modes(const rapidjson::Value &mode_repr) {
+        using namespace rapidjson;
+
+        for (Value::ConstValueIterator itr = mode_repr.Begin();
+                               itr != mode_repr.End(); ++itr) {
+            std::string handle;
+
+            Value::ConstMemberIterator handle_ = itr->FindMember("handle");
+            if (handle_ == itr->MemberEnd())
+                throw exceptions::InvalidRepr("mode repr lacks \"handle\" member");
+            handle = handle_->value.GetString();
+
+            remove_mode(handle);
+        }
+    }
+
+    bool modes_modified() const {
+        return !m_add_modes.empty() || !m_remove_modes.empty();
+    }
+
+    ModeMap m_modes;
+    ModeMap m_add_modes;
+    ModeMap m_remove_modes;
 };
 
 }

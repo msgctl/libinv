@@ -99,7 +99,19 @@ public:
 
             m_down_ids.insert(dkey.remote_part());
         }
+        on_get();
+    }
 
+    void on_get() {
+        m_db_backed = true;
+    }
+
+    void on_commit() {
+        m_add_down_ids.clear();
+        m_remove_down_ids.clear();
+        m_remove_dkeys.clear();
+
+        m_modified = false;
         m_db_backed = true;
     }
 
@@ -121,7 +133,6 @@ public:
             db.impl().set(ukey, derived.path());
             db.impl().set(dkey, "");
         }
-        m_add_down_ids.clear();
 
         for (const IndexKey &p : m_remove_down_ids) {
             HierarchyDownKey dkey({derived.path(), p.string()});
@@ -132,16 +143,13 @@ public:
             if (!db.impl().remove(ukey))
                 throw std::runtime_error("Couldn't remove keys");
         }
-        m_remove_down_ids.clear();
 
         for (const HierarchyDownKey &dkey : m_remove_dkeys) {
              if (!db.impl().remove(dkey))
                 throw std::runtime_error("Couldn't remove keys");           
         }
-        m_remove_dkeys.clear();
 
-        m_modified = false;
-        m_db_backed = true;
+        on_commit();
     }
 
     std::unique_ptr<JSONRPC::SingleRequest> build_update_request(

@@ -7,10 +7,11 @@
 #include "stdtypes.hh"
 #include "rpc.hh"
 #include "jsonrpc.hh"
+#include "mode.hh"
 
 using namespace std;
 using namespace inventory;
-using namespace inventory::types;
+using namespace inventory::stdtypes;
 
 static int g_argc;
 static char **g_argv;
@@ -28,8 +29,12 @@ public:
 };
 
 TEST_F(DatamodelTest, repr_test) {
-    Shared<Item<>> first;
+    Item first;
     first["testattr"] = "test";    
+
+    Mode access_mode;
+    access_mode.set(USER, READ | WRITE);
+    first->set_mode("user_handle", access_mode);
 
     // TODO
     // if you're still thinking about async db update events, your long gone
@@ -37,18 +42,18 @@ TEST_F(DatamodelTest, repr_test) {
 
     // test weak_ptr use in ClientRequest
 
-    Shared<Owner<>> link("fred");
+    Owner link("fred");
     link *= first;
 
-    Shared<Item<>> contents;
+    Item contents;
     first += contents;
 
-    Shared<Item<>> up;
+    Item up;
     up += first;
 
     rapidjson::Document first_repr = first->repr();
 
-    Shared<Item<>> second;
+    Item second;
     second->from_repr(first_repr);
 
     std::cout << first->repr_string() << std::endl;
