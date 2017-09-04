@@ -281,8 +281,8 @@ public:
                 Foreach<Mixins...>::on_get(*this);
             }
         );
-        return Factory<ClientRequest>::create(std::move(jgetreq), session,
-                                                                 handler);
+        return Factory<SingleClientRequest>::create(std::move(jgetreq), session,
+                                                                       handler);
     }
 
     std::shared_ptr<RPC::ClientRequest> get_async(std::shared_ptr<
@@ -331,8 +331,8 @@ public:
                     on_commit();
                 }
             );
-            return Factory<RPC::ClientRequest>::create(std::move(jupdatereq),
-                                                           session, handler);
+            return Factory<RPC::SingleClientRequest>::create(std::move(jupdatereq),
+                                                                 session, handler);
         } else {
             // does not push ID if it was generated automatically
             std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request(
@@ -349,8 +349,8 @@ public:
                     on_commit();
                 }
             );
-            return Factory<RPC::ClientRequest>::create(std::move(jsetreq), session,
-                                                                          handler);
+            return Factory<RPC::SingleClientRequest>::create(std::move(jsetreq), session,
+                                                                                handler);
         }
     }
 
