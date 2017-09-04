@@ -30,7 +30,8 @@ public:
     virtual void SetUp() {
         m_swq = std::make_shared<Workqueue<ServerRequest>>(4);
         m_cwq = std::make_shared<Workqueue<JSONRPC::RequestBase>>(2);
-        m_client = std::make_unique<HTTPClient>("https://localhost:8080", m_cwq, false);
+        m_client = std::make_unique<HTTPClient>("https://localhost:8080", m_cwq,
+                                   "client.crt", "client.key", "ca.crt", false);
         m_server = std::make_unique<HTTPServer>(8080, m_swq, 
             [this](ServerRequest &request) -> void {
                 request.complete<Database<>, types::StandardDataModel>(m_db);

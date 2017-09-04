@@ -34,30 +34,30 @@ static size_t _curl_upload_write_cb(void *ptr, size_t size, size_t nmemb,
     return size * nmemb;
 }
 
-HTTPClientSession::HTTPClientSession(HTTPClient *client)
-: ClientSession(static_cast<HTTPClient *>(client)) {
+HTTPClientSession::HTTPClientSession(HTTPClient *pcli)
+: ClientSession(static_cast<HTTPClient *>(pcli)) {
     CURL *rpc_handle = m_rpc_handle.curl();
     set_curl_defaults(rpc_handle);
     curl_easy_setopt(rpc_handle, CURLOPT_READFUNCTION, _curl_rpc_read_cb);
     curl_easy_setopt(rpc_handle, CURLOPT_WRITEFUNCTION, _curl_rpc_write_cb);
     curl_easy_setopt(rpc_handle, CURLOPT_SSL_VERIFYPEER,
-                      (int)(client->tls_verify_peer()));
+                        (int)(pcli->tls_verify_peer()));
     curl_easy_setopt(rpc_handle, CURLOPT_SSLCERTTYPE, "PEM");
-    curl_easy_setopt(rpc_handle, CURLOPT_SSLCERT, "client.crt");
+    curl_easy_setopt(rpc_handle, CURLOPT_SSLCERT, client().ssl_client_certfile().c_str());
     curl_easy_setopt(rpc_handle, CURLOPT_SSLKEYTYPE, "PEM");
-    curl_easy_setopt(rpc_handle, CURLOPT_SSLKEY, "client.key");
-    curl_easy_setopt(rpc_handle, CURLOPT_CAINFO, "ca.crt");
+    curl_easy_setopt(rpc_handle, CURLOPT_SSLKEY, client().ssl_client_keyfile().c_str());
+    curl_easy_setopt(rpc_handle, CURLOPT_CAINFO, client().ssl_ca_certfile().c_str());
 
     CURL *upload_handle = m_upload_handle.curl();
     set_curl_defaults(upload_handle);
     curl_easy_setopt(upload_handle, CURLOPT_READFUNCTION, _curl_upload_read_cb);
     curl_easy_setopt(upload_handle, CURLOPT_SSL_VERIFYPEER,
-                         (int)(client->tls_verify_peer()));
+                           (int)(pcli->tls_verify_peer()));
     curl_easy_setopt(upload_handle, CURLOPT_SSLCERTTYPE, "PEM");
-    curl_easy_setopt(upload_handle, CURLOPT_SSLCERT, "client.crt");
+    curl_easy_setopt(upload_handle, CURLOPT_SSLCERT, client().ssl_client_certfile().c_str());
     curl_easy_setopt(upload_handle, CURLOPT_SSLKEYTYPE, "PEM");
-    curl_easy_setopt(upload_handle, CURLOPT_SSLKEY, "client.key");
-    curl_easy_setopt(upload_handle, CURLOPT_CAINFO, "ca.crt");
+    curl_easy_setopt(upload_handle, CURLOPT_SSLKEY, client().ssl_client_keyfile().c_str());
+    curl_easy_setopt(upload_handle, CURLOPT_CAINFO, client().ssl_ca_certfile().c_str());
 }
 
 void HTTPClientSession::set_curl_defaults(CURL *handle) {

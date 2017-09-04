@@ -212,6 +212,14 @@ public:
         return m_up_id;
     }
 
+    bool is_root() const {
+        return m_up_id.empty();
+    }
+
+    bool empty() const {
+        return m_down_ids.empty();
+    }
+
     void clear_up() {
         m_up_id.clear();
         m_modified = true;
