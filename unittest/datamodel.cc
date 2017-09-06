@@ -11,7 +11,7 @@
 
 using namespace std;
 using namespace inventory;
-using namespace inventory::stdtypes;
+using namespace inventory::types::shared;
 
 static int g_argc;
 static char **g_argv;

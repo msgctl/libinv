@@ -175,9 +175,8 @@ public:
 
 using StandardDataModel = Datamodel<Category, Sticker, Picture,
                                       Item, GTIN, ISBN, Owner>;
-}
 
-namespace stdtypes {
+namespace shared {
     typedef Shared<types::Category<>> Category;
     typedef Shared<types::StickerPrefix> StickerPrefix;
     typedef Shared<types::Sticker<>> Sticker;
@@ -186,6 +185,7 @@ namespace stdtypes {
     typedef Shared<types::GTIN<>> GTIN;
     typedef Shared<types::ISBN<>> ISBN;
     typedef Shared<types::Owner<>> Owner;
+}
 }
 
 }

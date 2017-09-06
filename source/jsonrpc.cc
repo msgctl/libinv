@@ -163,6 +163,10 @@ rapidjson::Value &SingleResponse::error() const {
     return jerror->value;
 }
 
+bool SingleResponse::has_id() const {
+    return m_jval->HasMember("id");
+}
+
 bool SingleResponse::has_error() const {
     return m_jval->HasMember("error");
 }

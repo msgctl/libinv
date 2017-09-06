@@ -13,7 +13,7 @@
 
 using namespace std;
 using namespace inventory;
-using namespace inventory::stdtypes;
+using namespace inventory::types::shared;
 
 static int g_argc;
 static char **g_argv;
@@ -171,6 +171,42 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     Owner owner_("jones");
     owner_->get(session);
     EXPECT_EQ(owner->repr_string(), owner_->repr_string());
+
+    {
+        SharedVector<types::Item<>> batch_items;
+        Item first_idonly(first->id());
+        Item second_idonly(second->id());
+        batch_items.push_back(first_idonly);
+        batch_items.push_back(second_idonly);
+        batch_items.get(session);
+        EXPECT_EQ(first->repr_string(), first_idonly->repr_string());
+    }
+
+    {
+        SharedVector<types::Item<>> batch_items;
+        Item first_idonly(first->id());
+        Item second_idonly(second->id());
+        batch_items.push_back(first_idonly);
+        batch_items.push_back(second_idonly);
+        auto req_handle = batch_items.get_async(session);
+        batch_items.clear(); // test req_handle shared ptr ref
+        req_handle->complete();
+        EXPECT_EQ(first->repr_string(), first_idonly->repr_string());
+    }
+
+    {
+        SharedVector<types::Item<>> jones_items = owner->get_assoc_objects<types::Item<>>();
+        auto req_handle = jones_items.get_async(session);
+        bool test = false;
+        req_handle->push_complete_cb(
+            [&]() -> void {
+                test = true;
+            }
+        );
+        req_handle->complete_async();
+        sleep(1);
+        EXPECT_EQ(test, true);
+    }
 
     Item box;
     box["name"] = "boxen";

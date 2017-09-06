@@ -13,6 +13,8 @@
 #include "rpc.hh"
 #include "exception.hh"
 #include "uuid.hh"
+#include "shared_wrapper.hh"
+#include "shared_vector.hh"
 
 namespace inventory {
 

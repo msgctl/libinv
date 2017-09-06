@@ -15,6 +15,8 @@
 #include "exception.hh"
 #include "jsonrpc.hh"
 #include "uuid.hh"
+#include "shared_wrapper.hh"
+#include "shared_vector.hh"
 
 namespace inventory {
 
@@ -180,16 +182,27 @@ public:
     }
 
     template<class AssocObject>
-    std::vector<AssocObject> get_assoc_objects(Database &db) {
-        std::vector<AssocObject> result;
+    SharedVector<AssocObject> get_assoc_objects(Database &db) {
+        SharedVector<AssocObject> result;
         std::vector<IndexKey> assoc_ids = get_assoc_ids<AssocObject>();
         for (IndexKey &key : assoc_ids) {
-            AssocObject obj;
-            obj.get(db, key.id_part());
+            Shared<AssocObject> obj;
+            obj->get(db, key.id_part());
             result.push_back(obj);
         }
         return result;
     }
+
+    // just ids, use RPC::get_batch_async to get full repr 
+    template<class AssocObject>                            
+    SharedVector<AssocObject> get_assoc_objects() {        
+        SharedVector<AssocObject> result;                  
+        for (const IndexKey &key : m_assoc) {                
+            Shared<AssocObject> obj(key);
+            result.push_back(obj);                         
+        }                                                  
+        return result;                                     
+    }                                                      
 
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> ret({

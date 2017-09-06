@@ -403,7 +403,6 @@ class ClientRequest : public std::enable_shared_from_this<ClientRequest> {
     };
 
 public:
-    typedef std::function<void(std::unique_ptr<JSONRPC::Response>)> ResponseHandler;
     typedef std::function<void()> CompleteCallback;
 
 protected:
@@ -420,6 +419,8 @@ public:
 
     virtual void complete() = 0;
     virtual void complete_async() = 0;
+
+    bool completed() const { 
         return (bool)(m_response);
     }
 
@@ -429,11 +430,6 @@ public:
                                                 "completed request.");
         }
         return *m_response;
-    }
-
-    const JSONRPC::RequestBase &jsonrpc_request() const {
-        // TODO exceptions
-        return *m_request;
     }
 
     std::future<void> future() {
@@ -447,15 +443,15 @@ protected:
     std::vector<CompleteCallback> m_complete_cbs;
     std::unique_ptr<JSONRPC::Response> m_response;
     std::promise<void> m_promise;
-    std::unique_ptr<JSONRPC::RequestBase> m_request;
 };
 
 class SingleClientRequest : public ClientRequest {
 public:
+    typedef std::function<void(std::unique_ptr<JSONRPC::Response>)> ResponseHandler;
     friend class inventory::Factory<SingleClientRequest>;
 
     SingleClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
-                           std::weak_ptr<ClientSession> session)
+                                 std::weak_ptr<ClientSession> session)
     : ClientRequest(session), m_request(std::move(request)) {}
 
     SingleClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
@@ -507,16 +503,14 @@ public:
         return m_request->string();
     }
 
-    std::unique_ptr<JSONRPC::RequestBase> release() {
-        return m_request.release();
-    }
-
 private:
+    std::unique_ptr<JSONRPC::RequestBase> m_request;
     ResponseHandler m_handler;
 };
 
 class BatchClientRequest : public ClientRequest {
 public:
+    typedef std::function<void(const JSONRPC::SingleResponse &sresp)> ResponseHandler;
     typedef std::map<std::string, ResponseHandler> HandlerMap;
 
     BatchClientRequest(std::weak_ptr<ClientSession> session)
@@ -525,15 +519,20 @@ public:
     }
 
     BatchClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
-                           std::weak_ptr<ClientSession> session)
+                                std::weak_ptr<ClientSession> session)
     : ClientRequest(session), m_request(std::move(request)) {}
 
     BatchClientRequest(std::unique_ptr<JSONRPC::RequestBase> request,
-                           std::weak_ptr<ClientSession> session,
-                                             HandlerMap hnd_map,
-                std::vector<CompleteCallback> complete_cbs = {})
+                                std::weak_ptr<ClientSession> session,
+                                                  HandlerMap hnd_map,
+                     std::vector<CompleteCallback> complete_cbs = {})
     : ClientRequest(session, complete_cbs), m_request(std::move(request)),
-                                                 m_handler_map(hnd_map) {}
+                                                    m_handlers(hnd_map) {}
+
+    rapidjson::Document::AllocatorType &allocator() const {
+        // TODO exceptions
+        return m_request->allocator();
+    }
 
     void push_back(std::unique_ptr<JSONRPC::SingleRequest> sreq,
                                       ResponseHandler handler) {
@@ -541,54 +540,76 @@ public:
 
         m_handlers[sreq->id_string()] = std::move(handler);
         BatchRequest *breq = static_cast<BatchRequest *>(m_request.get());
-        breq->push_back(sreq);
+        breq->push_back(std::move(sreq));
     }
 
     virtual void complete() {
-        /*
+        using namespace rapidjson;
+
         {
             auto session = m_session.lock();
             m_response = session->call(*m_request);
         }
 
         m_response->parse();
-        if (m_handler)
-            m_handler(std::move(m_response));
+        if (m_response->value().IsArray()) {
+            for (Value::ValueIterator itr = m_response->value().Begin();
+                              itr != m_response->value().End(); ++itr) {
+                const JSONRPC::SingleResponse sresp(&*itr);
+                auto hnd_it = m_handlers.find(sresp.id_string());
+                if (hnd_it == m_handlers.end())
+                    continue;
+                (hnd_it->second)(sresp);
+            }
+        }
         for (CompleteCallback &cb : m_complete_cbs)
             cb();
         m_promise.set_value();
-        */
     }
 
     virtual void complete_async() {
-        /*
+        using namespace rapidjson;
+
         std::weak_ptr<ClientRequest> this_weakptr = shared_from_this();
         auto session = m_session.lock();
         if (!session) // TODO throw
             return;
 
         session->call_async(std::move(m_request),
-            [this_weakptr](std::unique_ptr<JSONRPC::Response>
-                                          response) -> void {
+            [this_weakptr, this](std::unique_ptr<JSONRPC::Response>
+                                                response) -> void {
                 auto request = this_weakptr.lock();
                 if (!request)
                     return;
 
-                request->m_response = std::move(response);
-                request->m_response->parse();
-                if (request->m_handler)
-                    request->m_handler(std::move(request->m_response));
-                for (CompleteCallback &cb : request->m_complete_cbs)
+                m_response = std::move(response);
+                m_response->parse();
+
+                if (m_response->value().IsArray()) {
+                    for (Value::ValueIterator itr = m_response->value().Begin();
+                                      itr != m_response->value().End(); ++itr) {
+                        const JSONRPC::SingleResponse sresp(&*itr);
+                        auto hnd_it = m_handlers.find(sresp.id_string());
+                        if (hnd_it == m_handlers.end())
+                            continue;
+                        (hnd_it->second)(sresp);
+                    }
+                }
+
+                for (CompleteCallback &cb : m_complete_cbs)
                     cb();
-                request->m_promise.set_value();
+                m_promise.set_value();
             }
         );
-        */
     }
 
+    virtual std::string string() const {
+        return m_request->string();
+    }
 
 private:
-    HandlerMap m_handler_map;
+    std::unique_ptr<JSONRPC::RequestBase> m_request;
+    HandlerMap m_handlers;
 };
 
 class ServerRequest { 
@@ -603,7 +624,7 @@ public:
 
         try {
             m_request->parse(); // throws
-            //std::cout << "debug request (server): " << m_request->string() << std::endl;
+            // std::cout << "debug request (server): " << m_request->string() << std::endl;
             if (m_request->is_batch()) {
                 JSONRPC::BatchRequest breq(std::move(*m_request.release()));
                 BatchCall batch(&breq, m_session.get());

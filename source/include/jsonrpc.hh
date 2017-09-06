@@ -404,8 +404,21 @@ public:
         return !m_jval->MemberCount();
     }
 
+    bool has_id() const;
     bool has_error() const;
     bool has_result() const;
+
+    rapidjson::Value &id() const {
+        if (!has_id())
+            throw InvalidUse("Called id() on an object without one.");
+        return (*m_jval)["id"];
+    }
+
+    std::string id_string() const {
+        if (!has_id())
+            throw InvalidUse("Called id_string() on an object without one.");
+        return (*m_jval)["id"].GetString();
+    }
 
     ErrorCode ec() const {
         return ErrorCode(error()["ec"].GetInt());

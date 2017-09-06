@@ -222,6 +222,9 @@ public:
     Object(std::string id) {
         self::assign_id(id);
     }
+    Object(IndexKey path) {
+        self::id_from_path(path);
+    }
     Object(Database &db)
     : IndexType<Database, Derived>(db) {}
 
@@ -269,18 +272,7 @@ public:
         using namespace JSONRPC;
 
         std::unique_ptr<SingleRequest> jgetreq = build_get_request(id);
-        // called (asynchronously) only if object haven't been destroyed
-        // in the meantime
-        auto handler = wrap_refcount_check(
-            [this](std::unique_ptr<Response> response) -> void {
-                const SingleResponse sresp(std::move(response));
-                if (sresp.has_error())
-                    sresp.throw_ec();
-                clear();
-                from_repr(sresp.result());
-                Foreach<Mixins...>::on_get(*this);
-            }
-        );
+        auto handler = build_get_async_handler();
         return Factory<SingleClientRequest>::create(std::move(jgetreq), session,
                                                                        handler);
     }
@@ -310,7 +302,7 @@ public:
         req_handle->complete();
     }
 
-   std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
+    std::shared_ptr<RPC::ClientRequest> commit_async(std::shared_ptr<RPC::ClientSession>
                                                   session, bool force_push_id = false) {
         using namespace RPC;
         using namespace JSONRPC;
@@ -318,19 +310,7 @@ public:
         if (db_backed()) {
             std::unique_ptr<JSONRPC::BatchRequest> jupdatereq =
                                         build_update_request();
-            auto handler = wrap_refcount_check(
-                [this](std::unique_ptr<Response> response) -> void {
-                    const BatchResponse bresp(std::move(response));
-                    bresp.foreach(
-                        [](const SingleResponse &resp) -> void {
-                            if (resp.has_error())
-                                resp.throw_ec();
-                        }
-                    );
-                    Foreach<Mixins...>::on_commit(*this);
-                    on_commit();
-                }
-            );
+            auto handler = build_update_async_handler();
             return Factory<RPC::SingleClientRequest>::create(std::move(jupdatereq),
                                                                  session, handler);
         } else {
@@ -338,17 +318,8 @@ public:
             std::unique_ptr<JSONRPC::SingleRequest> jsetreq = build_create_request(
                              !this->IndexType<Database, Derived>::generated_id() ||
                                                                     force_push_id);
-            auto handler = wrap_refcount_check(
-                [this](std::unique_ptr<Response> response) -> void {
-                    const SingleResponse sresp(std::move(response));
-                    if (sresp.has_error())
-                        sresp.throw_ec();
 
-                    self::assign_id(sresp.result().GetString());
-                    Foreach<Mixins...>::on_commit(*this);
-                    on_commit();
-                }
-            );
+            auto handler = build_commit_async_handler();
             return Factory<RPC::SingleClientRequest>::create(std::move(jsetreq), session,
                                                                                 handler);
         }
@@ -579,6 +550,43 @@ public:
         }
     }
 
+    std::unique_ptr<JSONRPC::SingleRequest> build_get_request(std::string id,
+                       rapidjson::Document::AllocatorType *alloc = nullptr) {
+        // TODO better
+        auto jreq = std::make_unique<JSONRPC::SingleRequest>(alloc);
+        jreq->id(self::id() + ":" + uuid_string());
+        jreq->method("object.repr.get");
+        jreq->params(true);
+
+        using namespace rapidjson;
+        Value jid;
+        jid.SetString(id.c_str(), jreq->allocator());
+        jreq->params().AddMember("id", jid, jreq->allocator());
+
+        Value jtype;
+        jtype.SetString(self::type().c_str(), jreq->allocator());
+        jreq->params().AddMember("type", jtype, jreq->allocator());
+
+        return jreq;
+    }
+
+    // TODO unify handler for batch and single
+    // zero-copy isnt worth the complexity
+    RPC::BatchClientRequest::ResponseHandler build_batch_get_async_handler() {
+        using namespace inventory::RPC;
+        using namespace inventory::JSONRPC;
+
+        return wrap_refcount_check_batch(
+            [this](const SingleResponse &sresp) -> void {
+                if (sresp.has_error())
+                    sresp.throw_ec();
+                clear();
+                from_repr(sresp.result());
+                Foreach<Mixins...>::on_get(*this);
+            }
+        );
+    }
+
 private:
     void repr(rapidjson::Value &robj, rapidjson::Document::AllocatorType
                                     &alloc, bool push_id = true) const {
@@ -621,25 +629,6 @@ private:
         self ex_obj(self::id());
         ex_obj.get(db);
         ex_obj.remove(db);
-    }
-
-    std::unique_ptr<JSONRPC::SingleRequest> build_get_request(std::string id) {
-        // TODO better
-        auto jreq = std::make_unique<JSONRPC::SingleRequest>();
-        jreq->id(self::id() + ":" + uuid_string());
-        jreq->method("object.repr.get");
-        jreq->params(true);
-
-        using namespace rapidjson;
-        Value jid;
-        jid.SetString(id.c_str(), jreq->allocator());
-        jreq->params().AddMember("id", jid, jreq->allocator());
-
-        Value jtype;
-        jtype.SetString(self::type().c_str(), jreq->allocator());
-        jreq->params().AddMember("type", jtype, jreq->allocator());
-
-        return jreq;
     }
 
     std::unique_ptr<JSONRPC::SingleRequest> build_create_request(
@@ -752,8 +741,8 @@ private:
         return jreq;
     }
 
-    RPC::ClientRequest::ResponseHandler wrap_refcount_check(
-                  RPC::ClientRequest::ResponseHandler hnd) {
+    RPC::SingleClientRequest::ResponseHandler wrap_refcount_check_single(
+                  RPC::SingleClientRequest::ResponseHandler hnd) {
         std::weak_ptr<self> this_weakptr = self::shared_from_this();
         return [this_weakptr, hnd](std::unique_ptr<JSONRPC::Response>
                                                   response) -> void {
@@ -761,6 +750,71 @@ private:
             if (sp)
                 hnd(std::move(response));
         };
+    }
+
+    RPC::BatchClientRequest::ResponseHandler wrap_refcount_check_batch(
+                  RPC::BatchClientRequest::ResponseHandler hnd) {
+        std::weak_ptr<self> this_weakptr = self::shared_from_this();
+        return [this_weakptr, hnd](const JSONRPC::SingleResponse &
+                                               response) -> void {
+            auto sp = this_weakptr.lock();
+            if (sp)
+                hnd(response);
+        };
+    }
+
+    RPC::SingleClientRequest::ResponseHandler build_get_async_handler() {
+        using namespace inventory::RPC;
+        using namespace inventory::JSONRPC;
+
+        // called (asynchronously) only if object haven't been destroyed
+        // in the meantime
+        return wrap_refcount_check_single(
+            [this](std::unique_ptr<Response> response) -> void {
+                const SingleResponse sresp(std::move(response));
+                if (sresp.has_error())
+                    sresp.throw_ec();
+                clear();
+                from_repr(sresp.result());
+                Foreach<Mixins...>::on_get(*this);
+            }
+        );
+    }
+
+    RPC::SingleClientRequest::ResponseHandler build_update_async_handler() {
+        using namespace inventory::RPC;
+        using namespace inventory::JSONRPC;
+
+        return wrap_refcount_check_single(
+            [this](std::unique_ptr<Response> response) -> void {
+                const BatchResponse bresp(std::move(response));
+                bresp.foreach(
+                    [](const SingleResponse &resp) -> void {
+                        if (resp.has_error())
+                            resp.throw_ec();
+                    }
+                );
+                Foreach<Mixins...>::on_commit(*this);
+                on_commit();
+            }
+        );
+    }
+
+    RPC::SingleClientRequest::ResponseHandler build_commit_async_handler() {
+        using namespace inventory::RPC;
+        using namespace inventory::JSONRPC;
+
+        return wrap_refcount_check_single(
+            [this](std::unique_ptr<Response> response) -> void {
+                const SingleResponse sresp(std::move(response));
+                if (sresp.has_error())
+                    sresp.throw_ec();
+
+                self::assign_id(sresp.result().GetString());
+                Foreach<Mixins...>::on_commit(*this);
+                on_commit();
+            }
+        );
     }
 
     static void foreach_mode(const ModeMap &modes, ForeachModeCb cb) {
@@ -910,6 +964,8 @@ private:
     ModeMap m_add_modes;
     ModeMap m_remove_modes;
 };
+
+
 
 }
 

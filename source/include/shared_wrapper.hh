@@ -1,6 +1,7 @@
 #ifndef LIBINV_SHARED_WRAPPER_HH
 #define LIBINV_SHARED_WRAPPER_HH
 #include <memory>
+#include <vector>
 #include "factory.hh"
 
 namespace inventory {
