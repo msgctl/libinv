@@ -172,7 +172,7 @@ public:
     }
 
     template<class AssocObject>
-    std::vector<IndexKey> get_assoc_ids() {
+    std::vector<IndexKey> assoc_ids() {
         std::vector<IndexKey> result;
         std::copy_if(m_assoc.begin(), m_assoc.end(),
             std::back_inserter(result), [](const IndexKey &k) {
@@ -182,10 +182,10 @@ public:
     }
 
     template<class AssocObject>
-    SharedVector<AssocObject> get_assoc_objects(Database &db) {
+    SharedVector<AssocObject> assoc_objects(Database &db) {
         SharedVector<AssocObject> result;
-        std::vector<IndexKey> assoc_ids = get_assoc_ids<AssocObject>();
-        for (IndexKey &key : assoc_ids) {
+        std::vector<IndexKey> assoc_idvec = assoc_ids<AssocObject>();
+        for (IndexKey &key : assoc_idvec) {
             Shared<AssocObject> obj;
             obj->get(db, key.id_part());
             result.push_back(obj);
@@ -193,9 +193,9 @@ public:
         return result;
     }
 
-    // just ids, use RPC::get_batch_async to get full repr 
+    // just ids, use SharedVector::get to get full repr 
     template<class AssocObject>                            
-    SharedVector<AssocObject> get_assoc_objects() {        
+    SharedVector<AssocObject> assoc_objects() {        
         SharedVector<AssocObject> result;                  
         for (const IndexKey &key : m_assoc) {                
             Shared<AssocObject> obj(key);

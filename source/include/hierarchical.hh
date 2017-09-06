@@ -233,9 +233,9 @@ public:
         m_modified = true;
     }
 
-    Derived up(Database &db) {
-        Derived obj;
-        obj.get(db, m_up_id.id_part());
+    Shared<Derived> up(Database &db) {
+        Shared<Derived> obj;
+        obj->get(db, m_up_id.id_part());
         return obj;
     }
 
@@ -243,12 +243,22 @@ public:
         return m_down_ids;
     }
 
-    std::vector<Derived> down(Database &db) {
+    SharedVector<Derived> down(Database &db) {
         std::vector<Derived> result;
         std::set<IndexKey> dids = down_ids();
         for (const IndexKey &key : dids) {
             Derived obj(db);
             obj.get(db, key.id_part());
+            result.push_back(obj);
+        }
+        return result;
+    }
+
+    // just ids, use SharedVector::get to get full repr 
+    SharedVector<Derived> down() {
+        SharedVector<Derived> result;
+        for (const IndexKey &key : m_down_ids) {
+            Shared<Derived> obj(key);
             result.push_back(obj);
         }
         return result;

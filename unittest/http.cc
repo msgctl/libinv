@@ -195,7 +195,7 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     }
 
     {
-        SharedVector<types::Item<>> jones_items = owner->get_assoc_objects<types::Item<>>();
+        SharedVector<types::Item<>> jones_items = owner->assoc_objects<types::Item<>>();
         auto req_handle = jones_items.get_async(session);
         bool test = false;
         req_handle->push_complete_cb(
