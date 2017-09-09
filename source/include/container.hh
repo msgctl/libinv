@@ -279,6 +279,10 @@ public:
         //m_modified = true;
     }
 
+    void clear_attributes() {
+        clear();
+    }
+
     bool modified() const {
         return true; // TODO compute the difference
     }

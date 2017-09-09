@@ -26,6 +26,10 @@ public:
         return m_shptr.get();
     }
 
+    const Type *operator->() const {
+        return m_shptr.get();
+    }
+
     operator Type() {
         return *m_shptr;
     }

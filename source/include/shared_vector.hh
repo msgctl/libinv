@@ -11,7 +11,7 @@ namespace inventory {
 template<class Type>
 class SharedVector {
 public:
-    typedef std::function<void(Type &)> ForeachCb;
+    typedef std::function<void(Shared<Type>)> ForeachCb;
 
     void push_back(Shared<Type> object) {
         m_vec.push_back(object);
@@ -22,8 +22,8 @@ public:
     }
 
     void foreach(ForeachCb cb) {
-        for (Type &inst : m_vec)
-            cb(inst);
+        for (auto &shptr : m_vec)
+            cb(shptr);
     }
 
     std::vector<Shared<Type>> &vec() {

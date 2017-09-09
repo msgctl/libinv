@@ -404,6 +404,8 @@ class ClientRequest : public std::enable_shared_from_this<ClientRequest> {
 
 public:
     typedef std::function<void()> CompleteCallback;
+    typedef std::function<void(::inventory::exceptions::ExceptionBase &)>
+                                                        ExceptionHandler;
 
 protected:
     ClientRequest(std::weak_ptr<ClientSession> session,
@@ -418,7 +420,8 @@ public:
     }
 
     virtual void complete() = 0;
-    virtual void complete_async() = 0;
+    virtual void complete_async(ExceptionHandler ehnd = [](
+              ::inventory::exceptions::ExceptionBase &) -> void {}) = 0;
 
     bool completed() const { 
         return (bool)(m_response);
@@ -462,6 +465,9 @@ public:
                                                      m_handler(handler) {}
 
     virtual void complete() {
+        if (!m_request) // TODO error type
+            throw std::runtime_error("Cowardly refusing to send an empty request.");
+
         {
             auto session = m_session.lock();
             m_response = session->call(*m_request);
@@ -475,25 +481,33 @@ public:
         m_promise.set_value();
     }
 
-    virtual void complete_async() {
+    virtual void complete_async(ExceptionHandler ehnd = [](
+                 ::inventory::exceptions::ExceptionBase &) -> void {}) {
+        if (!m_request) // TODO error type
+            throw std::runtime_error("Cowardly refusing to send an empty request.");
+
         std::weak_ptr<ClientRequest> this_weakptr = shared_from_this();
         auto session = m_session.lock();
         if (!session) // TODO throw
             return;
 
         session->call_async(std::move(m_request),
-            [this_weakptr, this](std::unique_ptr<JSONRPC::Response>
-                                                response) -> void {
+            [ehnd, this_weakptr, this](std::unique_ptr<JSONRPC::Response>
+                                                      response) -> void {
                 auto request = this_weakptr.lock();
                 if (!request)
                     return;
 
-                m_response = std::move(response);
-                m_response->parse();
-                if (m_handler)
-                    m_handler(std::move(m_response));
-                for (CompleteCallback &cb : m_complete_cbs)
-                    cb();
+                try {
+                    m_response = std::move(response);
+                    m_response->parse();
+                    if (m_handler)
+                        m_handler(std::move(m_response));
+                    for (CompleteCallback &cb : m_complete_cbs)
+                        cb();
+                } catch(::inventory::exceptions::ExceptionBase &e) {
+                    ehnd(e);
+                } 
                 m_promise.set_value();
             }
         );
@@ -546,6 +560,9 @@ public:
     virtual void complete() {
         using namespace rapidjson;
 
+        if (!m_request) // TODO error type
+            throw std::runtime_error("Cowardly refusing to send an empty request.");
+
         {
             auto session = m_session.lock();
             m_response = session->call(*m_request);
@@ -567,8 +584,12 @@ public:
         m_promise.set_value();
     }
 
-    virtual void complete_async() {
+    virtual void complete_async(ExceptionHandler ehnd = [](
+                 ::inventory::exceptions::ExceptionBase &) -> void {}) {
         using namespace rapidjson;
+
+        if (!m_request) // TODO error type
+            throw std::runtime_error("Cowardly refusing to send an empty request.");
 
         std::weak_ptr<ClientRequest> this_weakptr = shared_from_this();
         auto session = m_session.lock();
