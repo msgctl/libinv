@@ -230,6 +230,10 @@ public:
 
     virtual ~Object() {}
 
+    virtual std::string name() {
+        return self::id();
+    }
+
     bool exists(Database &db) {
         return this->IndexType<Database, Derived>::exists(db);
     }

@@ -188,7 +188,8 @@ public:
         for (IndexKey &key : assoc_idvec) {
             Shared<AssocObject> obj;
             obj->get(db, key.id_part());
-            result.push_back(obj);
+            if (key.type_part() == AssocObject::type())
+                result.push_back(obj);
         }
         return result;
     }
@@ -199,7 +200,8 @@ public:
         SharedVector<AssocObject> result;                  
         for (const IndexKey &key : m_assoc) {                
             Shared<AssocObject> obj(key);
-            result.push_back(obj);                         
+            if (key.type_part() == AssocObject::type())
+                result.push_back(obj);
         }                                                  
         return result;                                     
     }                                                      

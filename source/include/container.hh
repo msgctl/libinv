@@ -44,6 +44,12 @@ public:
         return m_container.m_attrs[m_key].c_str();
     }
 
+    operator std::string() {
+        if (!exists())
+            return "";
+        return m_container.m_attrs[m_key].c_str();
+    }
+
     void remove() {
         if (!exists())
             return;

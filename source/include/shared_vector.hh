@@ -50,6 +50,10 @@ public:
         bcreq->complete();
     }
 
+    int size() const {
+        return m_vec.size();
+    }
+
 protected:
     std::vector<Shared<Type>> m_vec;
 };

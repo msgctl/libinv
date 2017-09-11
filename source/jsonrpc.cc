@@ -267,7 +267,7 @@ void JSONRPCBase::parse(std::string reqstr) {
 
     m_jdoc->Parse(reqstr.c_str());
     if (m_jdoc->HasParseError())
-        throw JSONRPC::exceptions::ParseError();
+        throw JSONRPC::exceptions::ParseError(reqstr);
 }
 
 const rapidjson::Value &SingleRequest::params() const {

@@ -21,7 +21,7 @@ namespace types {
 template<class Database = Database<>>
 class Category : public Object<Database, StringIndexedObject,
                   Category<Database>, Association, Container,
-                                              Hierarchical> {
+                                            Hierarchical> {
 public:
     typedef Object<Database, StringIndexedObject, Category<Database>,
                           Association, Container, Hierarchical> impl;
@@ -127,6 +127,14 @@ public:
     static const std::string &type() {
         static const std::string type("Item");
         return type;
+    }
+
+    virtual std::string name() override {
+        if ((*this)["name"].exists())
+            return (*this)["name"];
+        if ((*this)["title"].exists())
+            return (*this)["title"];
+        return this->id();
     }
 };
 

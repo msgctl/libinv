@@ -14,6 +14,9 @@ namespace inventory::JSONRPC::exceptions {
         ParseError()
         : ExceptionBase("JSONRPC: parse error.") {}
 
+        ParseError(std::string doc)
+        : ExceptionBase("JSONRPC: parse error while parsing: " + doc) {}
+
         virtual ErrorCode ec() const {
             return ErrorCode::PARSE_ERROR;
         }

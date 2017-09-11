@@ -58,8 +58,6 @@ public:
     template<class AssocObject>
     void operator-=(AssocObject &object) {
         *this -= object.path();
-
-        // TODO check integrity
         object.m_up_id.clear();
     }
 
@@ -205,6 +203,11 @@ public:
         return jreq;
     }
 
+    std::unique_ptr<JSONRPC::SingleRequest> build_hierarchy_request(
+                     rapidjson::Document::AllocatorType &alloc) {
+        // TODO
+    }
+
     void set_up_id(const IndexKey &key) {
         m_up_id = key;
         m_modified = true;
@@ -239,8 +242,37 @@ public:
         return obj;
     }
 
+    Shared<Derived> up() {
+        Shared<Derived> obj(m_up_id);
+        return obj;
+    }
+
     std::set<IndexKey> down_ids() {
         return m_down_ids;
+    }
+
+    std::vector<IndexKey> upward_ids(Database &db, std::vector<IndexKey>
+                                                            ovec = {}) {
+        get(db);
+        if (m_up_id) {
+            ovec.push_back(m_up_id);
+
+            Shared<Derived> up_ = up(db);
+            up_->upward_ids(db, ovec);
+        }
+        return ovec;
+    }
+
+    rapidjson::Value upward_ids(Database &db, rapidjson::Document
+                                        ::AllocatorType &alloc) {
+        std::vector<IndexKey> up_ids = upward_ids(db);
+        rapidjson::Value jids(rapidjson::kArrayType);
+        for (const IndexKey &key : up_ids) {
+            rapidjson::Value jid;
+            jid.SetString(key.string().c_str(), alloc);
+            jids.PushBack(jid, alloc);
+        }
+        return jids;
     }
 
     SharedVector<Derived> down(Database &db) {
@@ -267,6 +299,7 @@ public:
     static const std::vector<RPC::Method<Database, self>> &methods() {
         static const std::vector<RPC::Method<Database, self>> ret({
             RPC::Method<Database, self>("hierarchical.update", &self::rpc_update),
+            RPC::Method<Database, self>("hierarchical.hierarchy", &self::rpc_hierarchy)
         });
         return ret;
     }
@@ -288,6 +321,16 @@ public:
         if (call.jsonrpc()->is_notification())
             return rapidjson::Value(rapidjson::kNullType);
         return rapidjson::Value("OK");
+    }
+
+    rapidjson::Value rpc_hierarchy(Database &db, const RPC::SingleCall &call,
+                                 rapidjson::Document::AllocatorType &alloc) {
+        Derived &derived = static_cast<Derived &>(*this);
+        derived.rpc_get_index(call);
+        if (!derived.exists(db))
+            throw exceptions::NoSuchObject(derived.type(), derived.id());
+
+        return upward_ids(db, alloc);
     }
 
     static const std::string &mixin_type() {

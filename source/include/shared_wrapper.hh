@@ -8,6 +8,9 @@ namespace inventory {
 
 template<class Type>
 class Shared {
+    Shared(const Type &) {}
+    Shared(Type &&) {}
+
 public:
     template<typename ...Args>
     Shared(const Args &...args) {
@@ -32,6 +35,10 @@ public:
 
     operator Type() {
         return *m_shptr;
+    }
+
+    operator bool() const {
+        return (bool)(m_shptr);
     }
 
     template<class Arg>
