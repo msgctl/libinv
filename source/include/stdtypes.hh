@@ -26,7 +26,7 @@ class Category : public Object<Database, StringIndexedObject,
 public:
     typedef Object<Database, StringIndexedObject, Category<Database>,
                   Association, Container, Hierarchical, Global> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("Category");
@@ -94,7 +94,7 @@ class Picture : public Object<Database, UUIDIndexedObject,
 public:
     typedef Object<Database, UUIDIndexedObject, Picture<Database>,
                                      Association, Container> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("Picture");
@@ -123,7 +123,7 @@ class Item : public Object<Database, UUIDIndexedObject,
 public:
     typedef Object<Database, UUIDIndexedObject, Item<Database>, Association,
                                              Container, Hierarchical> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("Item");
@@ -145,7 +145,7 @@ class GTIN : public Object<Database, StringIndexedObject,
 public:
     typedef Object<Database, StringIndexedObject, GTIN<Database>,
                                      Association,Container> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("GTIN");
@@ -159,7 +159,7 @@ class ISBN : public Object<Database, StringIndexedObject,
 public:
     typedef Object<Database, StringIndexedObject, ISBN<Database>,
                                      Association,Container> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("ISBN");
@@ -174,7 +174,7 @@ class Owner : public Object<Database, StringIndexedObject,
 public:
     typedef Object<Database, StringIndexedObject, Owner<Database>,
                        Association, Container, Hierarchical> impl;
-    using impl::Object;
+    using impl::Object::Object;
 
     static const std::string &type() {
         static const std::string type("Owner");

@@ -355,8 +355,8 @@ public:
         try {
             // for RPC implementation in Derived classes
             Derived &derived = static_cast<Derived &>(*this); 
-            return derived.RPC::MethodRoster<Database, Derived>::rpc_call(db,
-                                                                call, alloc);
+            return derived.RPC::template MethodRoster<Database, Derived>::rpc_call(db,
+                                                                         call, alloc);
         } catch (RPC::exceptions::NoSuchMethod &e) {}
 
         return Foreach<Mixins...>::rpc_call(*this, db, call, alloc);

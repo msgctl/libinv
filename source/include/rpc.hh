@@ -308,7 +308,7 @@ std::unique_ptr<JSONRPC::ResponseBase> BatchCall::complete(Database &db)
               scall.complete_call<Database, Datamodel>(db, bresp->allocator());
             sresp.assign(srequest, sresult);
 
-            //std::cout << "debug: " << sresp.string() << std::endl;
+            std::cout << "batch resp: " << sresp.string() << std::endl;
 
             bresp->push_back(std::move(sresp));
         } catch (const inventory::exceptions::ExceptionBase &e) {
@@ -331,12 +331,12 @@ std::unique_ptr<JSONRPC::ResponseBase> SingleCall::complete(Database &db,
         alloc = &single_response->allocator();
 
     try {
-        //std::cout << "debug request: " << m_req.cptr->string() << std::endl;
+        std::cout << "single request: " << m_req.cptr->string() << std::endl;
 
         rapidjson::Value result = complete_call<Database, Datamodel>(db, *alloc);
         single_response->assign(*m_req.cptr, result);
 
-        //std::cout << "debug: " << single_response->string() << std::endl;
+        std::cout << "single response: " << single_response->string() << std::endl;
     } catch (const inventory::exceptions::ExceptionBase &e) {
         // catch everything; subject to change
         single_response->assign(*m_req.cptr, e);

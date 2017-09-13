@@ -5,6 +5,7 @@
 #include <stack>
 #include <memory>
 #include <stdexcept>
+#include <functional>
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>

@@ -42,7 +42,7 @@ ssize_t _http_response_reader(void *cls, uint64_t pos,
         return 0;
     if (pos >= session->m_response.length())
         return MHD_CONTENT_READER_END_OF_STREAM;
-    session->m_response.copy(buf, max, pos);
+    return session->m_response.copy(buf, max, pos);
 }
 
 static int _http_upload_handler(void *handler_cls,
@@ -120,12 +120,14 @@ static gnutls_x509_crt_t get_client_certificate(gnutls_session_t tls_session) {
         throw exceptions::HTTPServerException("Couldn't initialize client\
                                                            certificate.");
     } 
-    if (gnutls_x509_crt_import(client_cert, &pcert[0],
-                              GNUTLS_X509_FMT_DER)) {
+    // TODO check
+    if (int ec = gnutls_x509_crt_import(client_cert, &pcert[0],
+                                        GNUTLS_X509_FMT_DER)) {
         gnutls_x509_crt_deinit(client_cert);
         throw exceptions::HTTPServerException("Couldn't import client\
-                                                       certificate.");
+                             certificate. ec=" + std::to_string(ec));
     }
+    return client_cert;
 }
 
 static std::string cert_auth_get_dn(gnutls_x509_crt_t client_cert) {

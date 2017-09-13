@@ -5,6 +5,7 @@
 #include <typeinfo>
 #include <functional>
 #include <unistd.h>
+#include <gnutls/gnutls.h>
 #include "stdtypes.hh"
 #include "rpc.hh"
 #include "jsonrpc.hh"
@@ -259,10 +260,19 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     req_handle->complete();
 }
 
+static void gnutls_log(int level, const char *c) {
+    std::cerr << "GNUTLS(" << level << ") " << c << std::endl;
+}
+
 int main(int argc, char **argv) {
     assert(argc > 1);
     g_argc = argc;
     g_argv = argv;
+
+     gnutls_global_init();
+     gnutls_global_set_log_level(0);
+     gnutls_global_set_log_function(gnutls_log);
+    
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
