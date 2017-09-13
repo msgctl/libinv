@@ -11,6 +11,7 @@
 #include "association.hh"
 #include "hierarchical.hh"
 #include "container.hh"
+#include "global.hh"
 #include "rpc.hh"
 #include "datamodel.hh"
 #include "shared_wrapper.hh"
@@ -21,10 +22,10 @@ namespace types {
 template<class Database = Database<>>
 class Category : public Object<Database, StringIndexedObject,
                   Category<Database>, Association, Container,
-                                            Hierarchical> {
+                                      Hierarchical, Global> {
 public:
     typedef Object<Database, StringIndexedObject, Category<Database>,
-                          Association, Container, Hierarchical> impl;
+                  Association, Container, Hierarchical, Global> impl;
     using impl::Object;
 
     static const std::string &type() {

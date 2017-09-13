@@ -6,34 +6,36 @@
 
 namespace inventory {
 
-template<class Type>
+template<class Type_>
 class Shared {
-    Shared(const Type &) {}
-    Shared(Type &&) {}
+    Shared(const Type_ &) {}
+    Shared(Type_ &&) {}
 
 public:
+    typedef Type_ Type;
+
     template<typename ...Args>
     Shared(const Args &...args) {
-        m_shptr = make<Type>(args...);
+        m_shptr = make<Type_>(args...);
     }
 
-    Type &ref() {
+    Type_ &ref() {
         return *m_shptr;
     }
 
-    const Type &cref() const {
+    const Type_ &cref() const {
         return ref();
     }
 
-    Type *operator->() {
+    Type_ *operator->() {
         return m_shptr.get();
     }
 
-    const Type *operator->() const {
+    const Type_ *operator->() const {
         return m_shptr.get();
     }
 
-    operator Type() {
+    operator Type_() {
         return *m_shptr;
     }
 
@@ -87,7 +89,7 @@ public:
     }
 
 protected:
-    std::shared_ptr<Type> m_shptr;
+    std::shared_ptr<Type_> m_shptr;
 };
 
 }

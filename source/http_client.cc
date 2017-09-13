@@ -79,6 +79,8 @@ void HTTPClientSession::notify_async(std::unique_ptr<JSONRPC::RequestBase>
 
 std::unique_ptr<JSONRPC::Response> HTTPClientSession::call(
                      const JSONRPC::RequestBase &request) {
+    std::unique_lock<std::mutex> lock(m_curl_mutex);
+
     using namespace exceptions;
     char errbuf[CURL_ERROR_SIZE];
     std::stringstream request_stream;

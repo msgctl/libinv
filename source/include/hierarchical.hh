@@ -276,6 +276,7 @@ public:
     }
 
     SharedVector<Derived> down(Database &db) {
+        // TODO fix?
         std::vector<Derived> result;
         std::set<IndexKey> dids = down_ids();
         for (const IndexKey &key : dids) {

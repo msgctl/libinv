@@ -239,6 +239,24 @@ TEST_F(HTTPTest, HTTPClient_rpc_integration_test) {
     std::string id_after = auto_id->id();
     EXPECT_NE(id_before, id_after);
     auto_id->get(session);
+
+    // global index test
+    Category cat1("food");
+    Category cat2("cans");
+    cat1->commit(session);
+    cat2->commit(session);
+
+    std::cout << "Global category index ids:" << std::endl;
+    auto req_handle = Category::Type::get_global_index(session,
+        [](SharedVector<types::Category<>> &&index) {
+            index.foreach(
+                [](Category cat_shptr) {
+                    std::cout << cat_shptr->id() << std::endl;
+                }
+            );
+        }
+    );
+    req_handle->complete();
 }
 
 int main(int argc, char **argv) {

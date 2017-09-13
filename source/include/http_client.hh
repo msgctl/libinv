@@ -106,6 +106,8 @@ private:
 
     std::mutex m_curl_upload_lock;
     CURLWrapper m_upload_handle;
+
+    std::mutex m_curl_mutex; // TODO use multiple curl handles instead
 };
 
 }
